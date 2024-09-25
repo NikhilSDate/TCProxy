@@ -13,7 +13,7 @@ use tracing_subscriber::fmt::MakeWriter;
 #[derive(Parser, Debug)]
 #[clap(name = "Reverse TCP Proxy", version="0.1.0", author="Ronan Boyarski, Nikil Date, Ethan Zhang, Somrishi Bannerjee")]
 struct Args {
-    /// Redirection
+    // Redirection
     #[clap(short = 'b', long, help = "Local port to bind to")]
     bind_port: u16,
     #[clap(short = 'l', long, default_value = "0.0.0.0", help = "Local IP to bind to")]
@@ -22,10 +22,10 @@ struct Args {
     dest_port: u16,
     #[clap(short = 'r', long, default_value = "127.0.0.1", help = "Destination IP to forward to")]
     dest_ip: Ipv4Addr,
-    /// Interactive Settings (for non-daemon mode)
+    // Interactive Settings (for non-daemon mode)
     #[clap(short = 's', long, help = "Log to stdout instead of a file")]
     stdout: bool,
-    /// Logging configuration
+    // Logging configuration
     #[clap(long, default_value = "info", help = "Maximum log level to display")]
     log_level: Level,
     #[clap(long, default_value = "log", help = "Directory to store logs")]
