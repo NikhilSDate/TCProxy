@@ -10,6 +10,12 @@ use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::fmt::MakeWriter;
 
+use parser::CSVParser;
+use parser::Rule;
+use pest::Parser as PestParser;
+
+mod parser;
+
 #[derive(Parser, Debug)]
 #[clap(name = "Reverse TCP Proxy", version="0.1.0", author="Ronan Boyarski, Nikil Date, Ethan Zhang, Somrishi Bannerjee")]
 struct Args {
@@ -35,7 +41,7 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() {
+async fn run_proxy() {
     let args = Args::parse();
 
     // Initialize logging
@@ -77,4 +83,10 @@ async fn main() {
             };
         });
     }
+}
+
+fn main() {
+    let statement = "(def-var bad-ip \"192.0.1.2\")";
+    let successful_parse = CSVParser::parse(Rule::vardef, statement);
+    println!("{}", successful_parse.unwrap());
 }
