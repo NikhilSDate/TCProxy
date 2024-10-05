@@ -337,6 +337,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
+name = "parser"
+version = "0.1.0"
+
+[[package]]
 name = "pest"
 version = "2.7.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -386,6 +390,10 @@ name = "pin-project-lite"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bda66fc9667c18cb2758a2ac84d1167245054bcf85d5d1aaa6923f45801bdd02"
+
+[[package]]
+name = "playground"
+version = "0.1.0"
 
 [[package]]
 name = "powerfmt"

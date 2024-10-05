@@ -1,19 +1,7 @@
-[package]
-name = "Backend"
-version = "0.1.0"
-edition = "2021"
+[workspace]
 
-[dependencies]
-clap = { version = "4.5.18", features = ["derive"] }
-# Redirector
-tokio = { version = "1.40.0", features = ["net", "tracing", "rt", "rt-multi-thread", "macros", "io-util"] }
-
-
-# Logging
-tracing = "0.1.40"
-tracing-subscriber = "0.3.18"
-tracing-appender = "0.2.3"
-
-# Parser
-pest = "2.6"
-pest_derive = "2.6"
+members = [
+    "redirector",
+    "parser",
+    "playground"
+]
