@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+
+rulelib = { path = "../rulelib" }
+pest = "2.6"
+pest_derive = "2.6"
