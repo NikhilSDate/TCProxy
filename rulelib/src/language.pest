@@ -1,0 +1,41 @@
+// Ethan's BNF grammar
+
+// <s_exp>       ::= <atom>
+//                 | <list> .
+
+// <list>        ::= "nil"
+//                 | "(" <list_part> ")" .
+// <list_part>   ::= <s_exp> <list_part>
+//                 | <s_exp> .
+
+// <atom>        ::= <ident>
+//                 | <number>
+//                 | <string>
+//                 | <bool> .
+
+// <ident>       ::= <letter> <ident_part>
+// <ident_part>  ::= <empty>
+//                 | <letter> <ident_part>
+//                 | <number> <ident_part>
+//                 | "-" <ident_part>
+//                 | "?" <ident_part>
+//                 | "!" <ident_part>.
+
+// <string>      ::= "\"" <string_part> "\"" .
+// <string_part> ::= <empty>
+//                 | <ascii> <string_part> .
+
+// ;; <letter>, <number>, <ascii>, <bool> defined elsewhere
+
+s_exp = {atom | list}
+list = {"(" ~ list_part ~ ")" | "nil"}
+list_part = {s_expr ~ list_part | s_exp}
+atom = {ident | number | string}
+ident = @{ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "-" | "?" | "!")*}
+
+
+string = @{"\"" ~ string_part ~ "\""}
+string_part = @{ASCII*}
+
+number = @{ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*}
+
