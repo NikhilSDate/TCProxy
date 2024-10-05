@@ -1,6 +1,6 @@
-use std::net::IpAddr;
-use pest::iterators::Pair;
 use crate::Rule;
+use pest::iterators::Pair;
+use std::net::IpAddr;
 
 #[derive(Debug, Copy, Clone)]
 pub enum ProxyMode {
@@ -15,7 +15,10 @@ impl TryFrom<&str> for ProxyMode {
         match value {
             "OPAQUE" => Ok(ProxyMode::OPAQUE),
             "TRANSPARENT" => Ok(ProxyMode::TRANSPARENT),
-            _ => Err(AstParseError::ParseError(format!("Unknown proxy mode: {}", value)))
+            _ => Err(Self::Error::ParseError(format!(
+                "Unknown proxy mode: {}",
+                value
+            ))),
         }
     }
 }
@@ -24,7 +27,7 @@ impl TryFrom<&str> for ProxyMode {
 /// for example, `(if a b c)` should only execute *either* the consequent or the alternative, depending on the truth value of `a`
 /// See: https://www.cs.cmu.edu/Groups/AI/html/cltl/clm/node59.html
 #[derive(Debug, Clone)]
-pub enum SpecialForms {
+pub enum SpecialForm {
     /// (if <predicate> <consequent> <alternative>)
     If {
         predicate: Box<AstNode>,
@@ -32,10 +35,7 @@ pub enum SpecialForms {
         alternative: Box<AstNode>,
     },
     /// (def-var <name> <value>)
-    DefVar {
-        name: String,
-        value: Box<AstNode>,
-    },
+    DefVar { name: String, value: Box<AstNode> },
     /// (def-rule <name> <body>)
     DefRule {
         name: String,
@@ -43,27 +43,30 @@ pub enum SpecialForms {
         body: Box<AstNode>,
     },
     /// (set-mode OPAQUE) or (set-mode TRANSPARENT)
-    SetMode {
-        mode: ProxyMode
-    },
+    SetMode { mode: ProxyMode },
 }
 
 // TODO: refactor
-impl TryFrom<Pair<'_, Rule>> for SpecialForms {
+impl TryFrom<Pair<'_, Rule>> for SpecialForm {
     type Error = AstParseError;
 
     /// Tries to convert a parse tree node to a SpecialForm.
     /// Expects an `s_expr` as input
     fn try_from(value: Pair<Rule>) -> Result<Self, Self::Error> {
-        // TODO: convert ParseError messages to enums
         match value.as_rule() {
-            Rule::s_exp => Self::try_from(value.into_inner().next().expect("an `s_exp` is always either `list` or `ident`")),
+            Rule::s_exp => Self::try_from(
+                value
+                    .into_inner()
+                    .next()
+                    .expect("an `s_exp` is always either `list` or `ident`"),
+            ),
             Rule::list => {
                 let inner: Vec<_> = value.into_inner().collect();
                 if inner.is_empty() {
-                    Err(AstParseError::ParseError("expected `list_part`, found `nil`".to_string()))
-                }
-                else {
+                    Err(Self::Error::ParseError(
+                        "expected `list_part`, found `nil`".to_string(),
+                    ))
+                } else {
                     match inner.first() {
                         None => unreachable!("`list_part` always contains at least one child"),
                         Some(expr) => {
@@ -71,22 +74,41 @@ impl TryFrom<Pair<'_, Rule>> for SpecialForms {
                                 "if" => {
                                     // "if" + predicate + consequent + alternative
                                     if inner.len() != 4 {
-                                        Err(AstParseError::ParseError(format!("wrong arity for if; expected 3, received {}", inner.len() - 1)))
+                                        Err(Self::Error::ParseError(format!(
+                                            "wrong arity for if; expected 3, received {}",
+                                            inner.len() - 1
+                                        )))
                                     } else {
                                         // I think the clone here is necessary
-                                        // TODO: make sure that these are all the expected type?
-                                        //       add test to reject stuff like (if DROP ...)
-                                        let predicate = Box::new(AstNode::try_from(inner[1].clone())?);
-                                        let consequent = Box::new(AstNode::try_from(inner[2].clone())?);
-                                        let alternative = Box::new(AstNode::try_from(inner[3].clone())?);
+                                        let predicate =
+                                            Box::new(AstNode::try_from(inner[1].clone())?);
+                                        if !matches!(
+                                            *predicate,
+                                            AstNode::Ident(_) | AstNode::Sexp(_)
+                                        ) {
+                                            return Err(Self::Error::ParseError(
+                                                "predicate must be an ident or Sexp".to_string(),
+                                            ));
+                                        }
+                                        let consequent =
+                                            Box::new(AstNode::try_from(inner[2].clone())?);
+                                        let alternative =
+                                            Box::new(AstNode::try_from(inner[3].clone())?);
 
-                                        Ok(Self::If { predicate, consequent, alternative })
+                                        Ok(Self::If {
+                                            predicate,
+                                            consequent,
+                                            alternative,
+                                        })
                                     }
                                 }
                                 "def-var" => {
                                     // "def-var" + name + value
                                     if inner.len() != 3 {
-                                        Err(AstParseError::ParseError(format!("wrong arity for def-var; expected 2, received {}", inner.len() - 1)))
+                                        Err(Self::Error::ParseError(format!(
+                                            "wrong arity for def-var; expected 2, received {}",
+                                            inner.len() - 1
+                                        )))
                                     } else {
                                         // if (inner[1].as_rule != )
 
@@ -94,23 +116,34 @@ impl TryFrom<Pair<'_, Rule>> for SpecialForms {
                                         todo!()
                                     }
                                 }
-                                "def-rule" => { todo!() }
+                                "def-rule" => {
+                                    todo!()
+                                }
                                 "set-mode" => {
                                     // set-mode + OPAQUE/TRANSPARENT
                                     if inner.len() != 2 {
-                                        Err(AstParseError::ParseError(format!("wrong arity for set-mode; expected 1, received {}", inner.len() - 1)))
+                                        Err(Self::Error::ParseError(format!(
+                                            "wrong arity for set-mode; expected 1, received {}",
+                                            inner.len() - 1
+                                        )))
                                     } else {
                                         let mode = ProxyMode::try_from(inner[1].as_str())?;
                                         Ok(Self::SetMode { mode })
                                     }
                                 }
-                                _ => Err(AstParseError::ParseError(format!("expected a special form, received {}", expr.as_str())))
+                                _ => Err(Self::Error::ParseError(format!(
+                                    "expected a special form, received {}",
+                                    expr.as_str()
+                                ))),
                             }
                         }
                     }
                 }
             }
-            rule => Err(AstParseError::ParseError(format!("expected `s_expr`, received {:?}", rule))),
+            rule => Err(Self::Error::ParseError(format!(
+                "expected `s_expr`, received {:?}",
+                rule
+            ))),
         }
     }
 }
@@ -122,10 +155,7 @@ pub enum RuleOutcome {
     /// Respond with an ERR_CONNECTION_REFUSED
     REJECT,
     /// Forward the inbound packet to the specified redirect address
-    REDIRECT {
-        addr: String,
-        port: u8,
-    },
+    REDIRECT { addr: String, port: u8 },
     /// Rewrite packet content via regex substitution
     REWRITE {
         pattern: String,
@@ -143,11 +173,18 @@ impl TryFrom<Pair<'_, Rule>> for RuleOutcome {
     /// Expects an `s_expr` as input
     fn try_from(value: Pair<'_, Rule>) -> Result<Self, Self::Error> {
         match value.as_rule() {
-            Rule::s_exp => Self::try_from(value.into_inner().next().expect("an `s_exp` is always either `list` or `ident`")),
+            Rule::s_exp => Self::try_from(
+                value
+                    .into_inner()
+                    .next()
+                    .expect("an `s_exp` is always either `list` or `ident`"),
+            ),
             Rule::list => {
                 let inner: Vec<_> = value.into_inner().collect();
                 if inner.is_empty() {
-                    Err(AstParseError::ParseError("expected `list_part`, found `nil`".to_string()))
+                    Err(Self::Error::ParseError(
+                        "expected `list_part`, found `nil`".to_string(),
+                    ))
                 } else {
                     match inner.first() {
                         None => unreachable!("`list_part` always contains at least one child"),
@@ -156,93 +193,116 @@ impl TryFrom<Pair<'_, Rule>> for RuleOutcome {
                                 "REDIRECT" => {
                                     // REDIRECT + ip addr + port
                                     if inner.len() != 3 {
-                                        Err(AstParseError::ParseError(format!("wrong arity for REDIRECT; expected 2, received {}", inner.len() - 1)))
+                                        Err(Self::Error::ParseError(format!(
+                                            "wrong arity for REDIRECT; expected 2, received {}",
+                                            inner.len() - 1
+                                        )))
                                     } else {
                                         // FIXME: sketchy way to get the string out; ideally, we recursively parse the AstNode and check if it's of variant `String`
-                                        inner[1].as_str().trim_matches(|c| c == '"').parse::<IpAddr>()
-                                            .or(Err(AstParseError::ParseError("bad address to REDIRECT".to_string())))
+                                        inner[1]
+                                            .as_str()
+                                            .trim_matches(|c| c == '"')
+                                            .parse::<IpAddr>()
+                                            .or(Err(Self::Error::ParseError(
+                                                "bad address to REDIRECT".to_string(),
+                                            )))
                                             .and_then(|addr| {
                                                 // FIXME: similar remark here; ideally, we check if the AstNode is of variant `Num`
-                                                inner[2].as_str().parse::<u8>()
-                                                    .or(Err(AstParseError::ParseError("bad port to REDIRECT".to_string())))
-                                                    .and_then(|port| Ok(RuleOutcome::REDIRECT { addr: addr.to_string(), port }))
+                                                inner[2]
+                                                    .as_str()
+                                                    .parse::<u8>()
+                                                    .or(Err(Self::Error::ParseError(
+                                                        "bad port to REDIRECT".to_string(),
+                                                    )))
+                                                    .and_then(|port| {
+                                                        Ok(RuleOutcome::REDIRECT {
+                                                            addr: addr.to_string(),
+                                                            port,
+                                                        })
+                                                    })
                                             })
                                     }
                                 }
                                 "REWRITE" => {
                                     if inner.len() != 3 {
-                                        Err(AstParseError::ParseError(format!("wrong arity for REWRITE; expected 2, received {}", inner.len() - 1)))
+                                        Err(Self::Error::ParseError(format!(
+                                            "wrong arity for REWRITE; expected 2, received {}",
+                                            inner.len() - 1
+                                        )))
                                     } else {
                                         let pattern = inner[1].as_str().trim_matches(|c| c == '"');
-                                        let replace_with = inner[2].as_str().trim_matches(|c| c == '"');
+                                        let replace_with =
+                                            inner[2].as_str().trim_matches(|c| c == '"');
 
-                                        Ok(Self::REWRITE { pattern: pattern.to_string(), replace_with: replace_with.to_string() })
+                                        Ok(Self::REWRITE {
+                                            pattern: pattern.to_string(),
+                                            replace_with: replace_with.to_string(),
+                                        })
                                     }
                                 }
-                                ident => Err(AstParseError::ParseError(format!("expected one of `REDIRECT` or `REWRITE`, received {}", ident)))
+                                ident => Err(Self::Error::ParseError(format!(
+                                    "expected one of `REDIRECT` or `REWRITE`, received {}",
+                                    ident
+                                ))),
                             }
                         }
                     }
                 }
             }
-            Rule::atom => Self::try_from(value.into_inner().next().expect("an `atom` is always either `ident`, `number`, `string`")),
-            Rule::ident => {
-                match value.as_str() {
-                    "DROP" => Ok(Self::DROP),
-                    "REJECT" => Ok(Self::REJECT),
-                    "CONTINUE" => Ok(Self::CONTINUE),
-                    ident => Err(AstParseError::ParseError(format!("expected one of `DROP` or `REJECT`, received {}", ident))),
-                }
-            }
-            rule => Err(AstParseError::ParseError(format!("expected `s_expr`, received {:?}", rule))),
+            Rule::atom => Self::try_from(
+                value
+                    .into_inner()
+                    .next()
+                    .expect("an `atom` is always either `ident`, `number`, `string`"),
+            ),
+            Rule::ident => match value.as_str() {
+                "DROP" => Ok(Self::DROP),
+                "REJECT" => Ok(Self::REJECT),
+                "CONTINUE" => Ok(Self::CONTINUE),
+                ident => Err(Self::Error::ParseError(format!(
+                    "expected one of `DROP` or `REJECT`, received {}",
+                    ident
+                ))),
+            },
+            rule => Err(Self::Error::ParseError(format!(
+                "expected `s_expr`, received {:?}",
+                rule
+            ))),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum BuiltinOp {
-    Func {
-        name: String,
-        arguments: Vec<Box<AstNode>>,
-    },
-    SpecialForm(SpecialForms),
+pub enum Keyword {
+    SpecialForm(SpecialForm),
     Outcome(RuleOutcome),
 }
 
-impl TryFrom<Pair<'_, Rule>> for BuiltinOp {
+impl TryFrom<Pair<'_, Rule>> for Keyword {
     type Error = AstParseError;
 
     /// Tries to convert a parse tree node to a BuiltinOp.
     /// Expects an `s_expr` as input
     fn try_from(value: Pair<'_, Rule>) -> Result<Self, Self::Error> {
-        todo!()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum List<T> {
-    Nil,
-    NonEmpty(Vec<T>),
-}
-
-impl<T> TryFrom<Pair<'_, Rule>> for List<T> {
-    type Error = AstParseError;
-
-    /// Tries to convert a parse tree node to a List<T>.
-    /// Expects an `s_expr` as input
-    fn try_from(value: Pair<'_, Rule>) -> Result<Self, Self::Error> {
-        todo!()
+        if let Ok(form) = SpecialForm::try_from(value.clone()) {
+            Ok(Self::SpecialForm(form))
+        } else if let Ok(outcome) = RuleOutcome::try_from(value) {
+            Ok(Self::Outcome(outcome))
+        } else {
+            Err(Self::Error::ParseError("not a builtin".to_string()))
+        }
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum AstNode {
     // TODO: find a better name for this
-    Keyword(BuiltinOp),
+    Keyword(Keyword),
     Num(i64),
     Ident(String),
     String(String),
-    Sexp(List<Box<AstNode>>),
+    Sexp(Vec<AstNode>),
+    Program(Vec<AstNode>),
 }
 
 impl TryFrom<Pair<'_, Rule>> for AstNode {
@@ -251,10 +311,56 @@ impl TryFrom<Pair<'_, Rule>> for AstNode {
     /// Tries to convert a parse tree node to an AST.
     /// Expects an `s_expr` or a `program` as input
     fn try_from(value: Pair<'_, Rule>) -> Result<Self, Self::Error> {
-        todo!()
+        if let Ok(keyword) = Keyword::try_from(value.clone()) {
+            Ok(AstNode::Keyword(keyword))
+        } else {
+            match value.as_rule() {
+                Rule::program => {
+                    let inner = value
+                        .into_inner()
+                        .map(Self::try_from)
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    Ok(Self::Program(inner))
+                }
+                Rule::s_exp => Self::try_from(
+                    value
+                        .into_inner()
+                        .next()
+                        .expect("an `s_exp` is always either `list` or `ident`"),
+                ),
+                Rule::list => {
+                    let inner = value
+                        .into_inner()
+                        .map(Self::try_from)
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    Ok(Self::Sexp(inner))
+                }
+                Rule::atom => Self::try_from(
+                    value
+                        .into_inner()
+                        .next()
+                        .expect("an `atom` is always either `ident`, `number`, `string`"),
+                ),
+                Rule::ident => Ok(Self::Ident(value.as_str().to_string())),
+                Rule::string => Ok(Self::String(value.as_str().to_string())),
+                Rule::number => Ok(Self::Num(
+                    value
+                        .as_str()
+                        .parse::<i64>()
+                        .expect("`number` is guaranteed to be only ascii digits"),
+                )),
+                rule => Err(Self::Error::ParseError(format!(
+                    "expected `s_expr`, received {:?}",
+                    rule
+                ))),
+            }
+        }
     }
 }
 
+// TODO: convert ParseError messages to enums
 #[derive(Debug, Clone)]
 pub enum AstParseError {
     ParseError(String),
@@ -263,8 +369,8 @@ pub enum AstParseError {
 #[cfg(test)]
 mod tests {
     // FIXME: leaky unit tests, but I don't want to manually write out parse trees...
-    use pest::Parser;
     use crate::{Rule, RuleParser};
+    use pest::Parser;
 
     use crate::ast::AstParseError;
 
@@ -295,24 +401,36 @@ mod tests {
 
     mod special_forms {
         use super::*;
-        use crate::ast::{ProxyMode, SpecialForms};
+        use crate::ast::{ProxyMode, SpecialForm};
 
         #[test]
         fn try_from__fails_on_unexpected_parse_trees() {
-            let parse_tree = RuleParser::parse(Rule::s_exp, "100").unwrap().next().unwrap();
-            let ast = SpecialForms::try_from(parse_tree);
+            let parse_tree = RuleParser::parse(Rule::s_exp, "100")
+                .unwrap()
+                .next()
+                .unwrap();
+            let ast = SpecialForm::try_from(parse_tree);
             assert!(ast.is_err());
 
-            let parse_tree = RuleParser::parse(Rule::s_exp, "hi").unwrap().next().unwrap();
-            let ast = SpecialForms::try_from(parse_tree);
+            let parse_tree = RuleParser::parse(Rule::s_exp, "hi")
+                .unwrap()
+                .next()
+                .unwrap();
+            let ast = SpecialForm::try_from(parse_tree);
             assert!(ast.is_err());
 
-            let parse_tree = RuleParser::parse(Rule::s_exp, "(bob was here)").unwrap().next().unwrap();
-            let ast = SpecialForms::try_from(parse_tree);
+            let parse_tree = RuleParser::parse(Rule::s_exp, "(bob was here)")
+                .unwrap()
+                .next()
+                .unwrap();
+            let ast = SpecialForm::try_from(parse_tree);
             assert!(ast.is_err());
 
-            let parse_tree = RuleParser::parse(Rule::s_exp, "(cow 100)").unwrap().next().unwrap();
-            let ast = SpecialForms::try_from(parse_tree);
+            let parse_tree = RuleParser::parse(Rule::s_exp, "(cow 100)")
+                .unwrap()
+                .next()
+                .unwrap();
+            let ast = SpecialForm::try_from(parse_tree);
             assert!(ast.is_err());
         }
 
@@ -321,25 +439,39 @@ mod tests {
 
             #[test]
             fn try_from__works_with_expected_parse_trees() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, "(set-mode TRANSPARENT)").unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, "(set-mode TRANSPARENT)")
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
-                let ast = SpecialForms::try_from(parse_tree).unwrap();
-                assert!(matches!(ast, SpecialForms::SetMode { mode: ProxyMode::TRANSPARENT }));
+                let ast = SpecialForm::try_from(parse_tree).unwrap();
+                assert!(matches!(
+                    ast,
+                    SpecialForm::SetMode {
+                        mode: ProxyMode::TRANSPARENT
+                    }
+                ));
             }
 
             #[test]
             fn try_from__fails_on_parse_tree_with_wrong_arity() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, "(set-mode OPAQUE hi)").unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, "(set-mode OPAQUE hi)")
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
-                let ast = SpecialForms::try_from(parse_tree);
+                let ast = SpecialForm::try_from(parse_tree);
                 assert!(ast.is_err());
             }
 
             #[test]
             fn try_from__fails_on_well_formed_parse_tree_with_unexpected_argument() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, "(set-mode CANDY)").unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, "(set-mode CANDY)")
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
-                let ast = SpecialForms::try_from(parse_tree);
+                let ast = SpecialForm::try_from(parse_tree);
                 assert!(ast.is_err());
             }
         }
@@ -416,19 +548,31 @@ mod tests {
 
         #[test]
         fn try_from__fails_on_unexpected_parse_trees() {
-            let parse_tree = RuleParser::parse(Rule::s_exp, "100").unwrap().next().unwrap();
+            let parse_tree = RuleParser::parse(Rule::s_exp, "100")
+                .unwrap()
+                .next()
+                .unwrap();
             let ast = RuleOutcome::try_from(parse_tree);
             assert!(ast.is_err());
 
-            let parse_tree = RuleParser::parse(Rule::s_exp, "hi").unwrap().next().unwrap();
+            let parse_tree = RuleParser::parse(Rule::s_exp, "hi")
+                .unwrap()
+                .next()
+                .unwrap();
             let ast = RuleOutcome::try_from(parse_tree);
             assert!(ast.is_err());
 
-            let parse_tree = RuleParser::parse(Rule::s_exp, "(bob was here)").unwrap().next().unwrap();
+            let parse_tree = RuleParser::parse(Rule::s_exp, "(bob was here)")
+                .unwrap()
+                .next()
+                .unwrap();
             let ast = RuleOutcome::try_from(parse_tree);
             assert!(ast.is_err());
 
-            let parse_tree = RuleParser::parse(Rule::s_exp, "(cow 100)").unwrap().next().unwrap();
+            let parse_tree = RuleParser::parse(Rule::s_exp, "(cow 100)")
+                .unwrap()
+                .next()
+                .unwrap();
             let ast = RuleOutcome::try_from(parse_tree);
             assert!(ast.is_err());
         }
@@ -438,7 +582,10 @@ mod tests {
 
             #[test]
             fn try_from__works_with_expected_parse_tree() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, "DROP").unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, "DROP")
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
                 let ast = RuleOutcome::try_from(parse_tree).unwrap();
                 assert!(matches!(ast, RuleOutcome::DROP));
@@ -446,7 +593,10 @@ mod tests {
 
             #[test]
             fn try_from__fails_on_bad_capitalization() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, "DrOP").unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, "DrOP")
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
                 let ast = RuleOutcome::try_from(parse_tree);
                 assert!(ast.is_err());
@@ -458,7 +608,10 @@ mod tests {
 
             #[test]
             fn try_from__works_with_expected_parse_tree() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, "REJECT").unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, "REJECT")
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
                 let ast = RuleOutcome::try_from(parse_tree).unwrap();
                 assert!(matches!(ast, RuleOutcome::REJECT));
@@ -466,7 +619,10 @@ mod tests {
 
             #[test]
             fn try_from__fails_on_bad_capitalization() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, "rEJECT").unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, "rEJECT")
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
                 let ast = RuleOutcome::try_from(parse_tree);
                 assert!(ast.is_err());
@@ -478,15 +634,23 @@ mod tests {
 
             #[test]
             fn try_from__works_with_expected_parse_tree() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REDIRECT "127.0.0.1" 80)"#).unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REDIRECT "127.0.0.1" 80)"#)
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
                 let ast = RuleOutcome::try_from(parse_tree).unwrap();
-                assert!(matches!(ast, RuleOutcome::REDIRECT {addr, port: 80} if addr == "127.0.0.1"));
+                assert!(
+                    matches!(ast, RuleOutcome::REDIRECT {addr, port: 80} if addr == "127.0.0.1")
+                );
             }
 
             #[test]
             fn try_from__fails_on_well_formed_parse_tree_with_invalid_arity() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REDIRECT "127.0.0.1" 80 foo)"#).unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REDIRECT "127.0.0.1" 80 foo)"#)
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
                 let ast = RuleOutcome::try_from(parse_tree);
                 assert!(ast.is_err());
@@ -494,7 +658,10 @@ mod tests {
 
             #[test]
             fn try_from__fails_on_well_formed_parse_tree_with_invalid_address() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REDIRECT "aaeuboa" 80)"#).unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REDIRECT "aaeuboa" 80)"#)
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
                 let ast = RuleOutcome::try_from(parse_tree);
                 assert!(ast.is_err());
@@ -502,12 +669,19 @@ mod tests {
 
             #[test]
             fn try_from__fails_on_well_formed_parse_tree_with_invalid_port() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REDIRECT "127.0.0.1" 123213213112)"#).unwrap().next().unwrap();
+                let parse_tree =
+                    RuleParser::parse(Rule::s_exp, r#"(REDIRECT "127.0.0.1" 123213213112)"#)
+                        .unwrap()
+                        .next()
+                        .unwrap();
 
                 let ast = RuleOutcome::try_from(parse_tree);
                 assert!(ast.is_err());
 
-                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REDIRECT "127.0.0.1" "80")"#).unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REDIRECT "127.0.0.1" "80")"#)
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
                 let ast = RuleOutcome::try_from(parse_tree);
                 assert!(ast.is_err());
@@ -519,15 +693,23 @@ mod tests {
 
             #[test]
             fn try_from__works_with_expected_parse_tree() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REWRITE "^bar$" "baz")"#).unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REWRITE "^bar$" "baz")"#)
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
                 let ast = RuleOutcome::try_from(parse_tree).unwrap();
-                assert!(matches!(ast, RuleOutcome::REWRITE {pattern, replace_with} if pattern == "^bar$" && replace_with == "baz"));
+                assert!(
+                    matches!(ast, RuleOutcome::REWRITE {pattern, replace_with} if pattern == "^bar$" && replace_with == "baz")
+                );
             }
 
             #[test]
             fn try_from__fails_on_well_formed_parse_tree_with_invalid_arity() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REWRITE "^bar$" "baz" "foo")"#).unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REWRITE "^bar$" "baz" "foo")"#)
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
                 let ast = RuleOutcome::try_from(parse_tree);
                 assert!(ast.is_err());
@@ -539,7 +721,10 @@ mod tests {
 
             #[test]
             fn try_from__works_with_expected_parse_tree() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, "CONTINUE").unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, "CONTINUE")
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
                 let ast = RuleOutcome::try_from(parse_tree).unwrap();
                 assert!(matches!(ast, RuleOutcome::CONTINUE));
@@ -547,7 +732,10 @@ mod tests {
 
             #[test]
             fn try_from__fails_on_bad_capitalization() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, "CONTinue").unwrap().next().unwrap();
+                let parse_tree = RuleParser::parse(Rule::s_exp, "CONTinue")
+                    .unwrap()
+                    .next()
+                    .unwrap();
 
                 let ast = RuleOutcome::try_from(parse_tree);
                 assert!(ast.is_err());
