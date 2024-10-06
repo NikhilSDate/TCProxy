@@ -353,6 +353,7 @@ impl TryFrom<Pair<'_, Rule>> for AstNode {
                 Rule::program => {
                     let inner = value
                         .into_inner()
+                        .filter(|v| !matches!(v.as_rule(), Rule::EOI))
                         .map(Self::try_from)
                         .collect::<Result<Vec<_>, _>>()?;
 
@@ -389,7 +390,9 @@ impl TryFrom<Pair<'_, Rule>> for AstNode {
                         Ok(Self::Ident(value.to_string()))
                     }
                 }
-                Rule::string => Ok(Self::String(value.as_str().to_string())),
+                Rule::string => Ok(Self::String(
+                    value.as_str().trim_matches(|c| c == '"').to_string(),
+                )),
                 Rule::number => Ok(Self::Num(
                     value
                         .as_str()
@@ -879,15 +882,143 @@ mod tests {
 
     mod ast_node {
         use super::*;
-        use crate::ast::AstNode;
+        use crate::ast::{AstNode, Keyword, ProxyMode, RuleOutcome, SpecialForm};
 
         #[test]
-        fn try_from__works_on_atoms() {}
+        fn try_from__works_correctly_on_atoms() {
+            let parse_tree = RuleParser::parse(Rule::s_exp, r#"foo"#)
+                .unwrap()
+                .next()
+                .unwrap();
+            let ast = AstNode::try_from(parse_tree).unwrap();
+            assert!(matches!(ast, AstNode::Ident(id) if id == "foo"));
+
+            let parse_tree = RuleParser::parse(Rule::s_exp, r#"if"#)
+                .unwrap()
+                .next()
+                .unwrap();
+            let ast = AstNode::try_from(parse_tree);
+            assert!(ast.is_err());
+
+            let parse_tree = RuleParser::parse(Rule::s_exp, "69")
+                .unwrap()
+                .next()
+                .unwrap();
+            let ast = AstNode::try_from(parse_tree).unwrap();
+            assert!(matches!(ast, AstNode::Num(69)));
+
+            let parse_tree = RuleParser::parse(Rule::s_exp, r#""chicken nuggets""#)
+                .unwrap()
+                .next()
+                .unwrap();
+            let ast = AstNode::try_from(parse_tree).unwrap();
+            assert!(matches!(ast, AstNode::String(s) if s == "chicken nuggets"));
+        }
 
         #[test]
-        fn try_from__works_on_lists() {}
+        fn try_from__works_on_lists() {
+            let parse_tree = RuleParser::parse(Rule::s_exp, r#"(1 2 3 a "b" c)"#)
+                .unwrap()
+                .next()
+                .unwrap();
+            let ast = AstNode::try_from(parse_tree).unwrap();
+            assert!(matches!(ast, AstNode::Sexp(_)));
+            if let AstNode::Sexp(v) = ast {
+                assert!(matches!(v[0], AstNode::Num(1)));
+                assert!(matches!(v[1], AstNode::Num(2)));
+                assert!(matches!(v[2], AstNode::Num(3)));
+                assert!(matches!(v[3].clone(), AstNode::Ident(s) if s == "a"));
+                assert!(matches!(v[4].clone(), AstNode::String(s) if s == "b"));
+                assert!(matches!(v[5].clone(), AstNode::Ident(s) if s == "c"));
+            }
+        }
 
         #[test]
-        fn try_from__works_on_sample_program() {}
+        fn try_from__works_on_sample_program() {
+            let program = r#"
+            (set-mode OPAQUE)
+
+            (def-var bad-ip "192.0.1.2")
+
+            (def-rule simple-rewrite
+                (if (exact? :metadata-source bad-ip)
+                    (REWRITE "^bar$" "baz")
+                    CONTINUE))
+
+            (def-rule simple-rule
+                (if (exact? :metadata-source bad-ip)
+                    DROP
+                    (REDIRECT "127.0.0.1" 80)))
+            "#;
+
+            let parse_tree = RuleParser::parse(Rule::program, program)
+                .unwrap()
+                .next()
+                .unwrap();
+            let ast = AstNode::try_from(parse_tree).unwrap();
+
+            if let AstNode::Program(stmts) = ast {
+                assert_eq!(stmts.len(), 4);
+
+                assert!(matches!(stmts[0].clone(), AstNode::Keyword(a)
+                        if matches!(a.clone(), Keyword::SpecialForm(b)
+                            if matches!(b.clone(), SpecialForm::SetMode {mode}
+                                if matches!(mode, ProxyMode::OPAQUE)))));
+
+                assert!(matches!(stmts[1].clone(), AstNode::Keyword(a)
+                    if matches!(a.clone(), Keyword::SpecialForm(b)
+                        if matches!(b.clone(), SpecialForm::DefVar {name, value}
+                            if name == "bad-ip"
+                            && matches!(*value.clone(), AstNode::String(s)
+                                if s == "192.0.1.2")))));
+
+                assert!(matches!(stmts[2].clone(), AstNode::Keyword(a)
+                    if matches!(a.clone(), Keyword::SpecialForm(b)
+                        if matches!(b.clone(), SpecialForm::DefRule {name, body}
+                            if name == "simple-rewrite"
+                            && matches!(*body.clone(), AstNode::Keyword(a)
+                                if matches!(a.clone(), Keyword::SpecialForm(b)
+                                    if matches!(b.clone(), SpecialForm::If {predicate, consequent, alternative}
+                                        if matches!(*predicate.clone(), AstNode::Sexp(v)
+                                            if matches!(v[0].clone(), AstNode::Ident(s)
+                                                if s == "exact?")
+                                            && matches!(v[1].clone(), AstNode::Ident(s)
+                                                if s == ":metadata-source")
+                                            && matches!(v[2].clone(), AstNode::Ident(s)
+                                                if s == "bad-ip"))
+                                        && matches!(*consequent.clone(), AstNode::Keyword(a)
+                                            if matches!(a.clone(), Keyword::Outcome(o)
+                                                if matches!(o.clone(), RuleOutcome::REWRITE {pattern, replace_with}
+                                                    if pattern == "^bar$"
+                                                    && replace_with == "baz")))
+                                        && matches!(*alternative.clone(), AstNode::Keyword(a)
+                                            if matches!(a.clone(), Keyword::Outcome(o)
+                                                if matches!(o.clone(), RuleOutcome::CONTINUE))))))))));
+
+                assert!(matches!(stmts[3].clone(), AstNode::Keyword(a)
+                        if matches!(a.clone(), Keyword::SpecialForm(b)
+                            if matches!(b.clone(), SpecialForm::DefRule {name, body}
+                                if name == "simple-rule"
+                                && matches!(*body.clone(), AstNode::Keyword(a)
+                                    if matches!(a.clone(), Keyword::SpecialForm(b)
+                                        if matches!(b.clone(), SpecialForm::If {predicate, consequent, alternative}
+                                            if matches!(*predicate.clone(), AstNode::Sexp(v)
+                                                if matches!(v[0].clone(), AstNode::Ident(s)
+                                                    if s == "exact?")
+                                                && matches!(v[1].clone(), AstNode::Ident(s)
+                                                    if s == ":metadata-source")
+                                                && matches!(v[2].clone(), AstNode::Ident(s)
+                                                    if s == "bad-ip")) &&
+                                            matches!(*consequent.clone(), AstNode::Keyword(a)
+                                                if matches!(a.clone(), Keyword::Outcome(o)
+                                                    if matches!(o.clone(), RuleOutcome::DROP))
+                                                && matches!(*alternative.clone(), AstNode::Keyword(a)
+                                                    if matches!(a.clone(), Keyword::Outcome(o)
+                                                        if matches!(o.clone(), RuleOutcome::REDIRECT{addr, port}
+                                                            if addr == "127.0.0.1" && port == 80)))))))))));
+            } else {
+                assert!(false);
+            }
+        }
     }
 }
