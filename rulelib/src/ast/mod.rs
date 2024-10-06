@@ -1,6 +1,13 @@
 use crate::Rule;
+use lazy_static::lazy_static;
 use pest::iterators::Pair;
+use std::collections::HashSet;
 use std::net::IpAddr;
+
+lazy_static! {
+    static ref RESERVED_KEYWORDS: HashSet<&'static str> =
+        HashSet::from(["def-var", "set-mode", "def-rule", "if"]);
+}
 
 #[derive(Debug, Copy, Clone)]
 pub enum ProxyMode {
@@ -371,7 +378,17 @@ impl TryFrom<Pair<'_, Rule>> for AstNode {
                         .next()
                         .expect("an `atom` is always either `ident`, `number`, `string`"),
                 ),
-                Rule::ident => Ok(Self::Ident(value.as_str().to_string())),
+                Rule::ident => {
+                    let value = value.as_str();
+                    if RESERVED_KEYWORDS.contains(value) {
+                        Err(Self::Error::ParseError(format!(
+                            "{} is a reserved keyword!",
+                            value
+                        )))
+                    } else {
+                        Ok(Self::Ident(value.to_string()))
+                    }
+                }
                 Rule::string => Ok(Self::String(value.as_str().to_string())),
                 Rule::number => Ok(Self::Num(
                     value
@@ -547,8 +564,18 @@ mod tests {
 
                 let ast = SpecialForm::try_from(parse_tree);
                 assert!(ast.is_err());
+
+                let parse_tree =
+                    RuleParser::parse(Rule::s_exp, r#"(if foo 420 (if "bar" baz cats))"#)
+                        .unwrap()
+                        .next()
+                        .unwrap();
+
+                let ast = SpecialForm::try_from(parse_tree);
+                assert!(ast.is_err());
             }
         }
+
         mod def_var {
             use super::*;
 
@@ -582,6 +609,15 @@ mod tests {
                     .unwrap()
                     .next()
                     .unwrap();
+
+                let ast = SpecialForm::try_from(parse_tree);
+                assert!(ast.is_err());
+
+                let parse_tree =
+                    RuleParser::parse(Rule::s_exp, r#"(def-var foo (if "bar" baz cats))"#)
+                        .unwrap()
+                        .next()
+                        .unwrap();
 
                 let ast = SpecialForm::try_from(parse_tree);
                 assert!(ast.is_err());
@@ -624,6 +660,15 @@ mod tests {
                     .unwrap()
                     .next()
                     .unwrap();
+
+                let ast = SpecialForm::try_from(parse_tree);
+                assert!(ast.is_err());
+
+                let parse_tree =
+                    RuleParser::parse(Rule::s_exp, r#"(def-rule foo (if "bar" baz cats))"#)
+                        .unwrap()
+                        .next()
+                        .unwrap();
 
                 let ast = SpecialForm::try_from(parse_tree);
                 assert!(ast.is_err());
