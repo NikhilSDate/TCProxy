@@ -5,3 +5,6 @@ target/
 
 # Nikhil's gitignore
 localrun.sh
+
+# logs
+redirector/log
