@@ -110,14 +110,42 @@ impl TryFrom<Pair<'_, Rule>> for SpecialForm {
                                             inner.len() - 1
                                         )))
                                     } else {
-                                        // if (inner[1].as_rule != )
-
-                                        // encore un fois (see comment in "if")
-                                        todo!()
+                                        // encore un fois for the clone (see comment in "if")
+                                        let name = AstNode::try_from(inner[1].clone())?;
+                                        if let AstNode::Ident(name) = name {
+                                            let value =
+                                                Box::new(AstNode::try_from(inner[2].clone())?);
+                                            Ok(Self::DefVar { name, value })
+                                        } else {
+                                            Err(Self::Error::ParseError(format!(
+                                                "def-var expected an `ident`, found {:?}",
+                                                inner[1].as_rule()
+                                            )))
+                                        }
                                     }
                                 }
+                                // TODO: refactor; this is practically a duplicate of the above code
                                 "def-rule" => {
-                                    todo!()
+                                    // "def-rule" + name + body
+                                    if inner.len() != 3 {
+                                        Err(Self::Error::ParseError(format!(
+                                            "wrong arity for def-rule; expected 2, received {}",
+                                            inner.len() - 1
+                                        )))
+                                    } else {
+                                        // encore un fois for the clone (see comment in "if")
+                                        let name = AstNode::try_from(inner[1].clone())?;
+                                        if let AstNode::Ident(name) = name {
+                                            let body =
+                                                Box::new(AstNode::try_from(inner[2].clone())?);
+                                            Ok(Self::DefRule { name, body })
+                                        } else {
+                                            Err(Self::Error::ParseError(format!(
+                                                "def-rule expected an `ident`, found {:?}",
+                                                inner[1].as_rule()
+                                            )))
+                                        }
+                                    }
                                 }
                                 "set-mode" => {
                                     // set-mode + OPAQUE/TRANSPARENT
@@ -367,6 +395,7 @@ pub enum AstParseError {
 }
 
 #[cfg(test)]
+#[allow(non_snake_case)]
 mod tests {
     // FIXME: leaky unit tests, but I don't want to manually write out parse trees...
     use crate::{Rule, RuleParser};
@@ -401,7 +430,7 @@ mod tests {
 
     mod special_forms {
         use super::*;
-        use crate::ast::{ProxyMode, SpecialForm};
+        use crate::ast::{AstNode, ProxyMode, SpecialForm};
 
         #[test]
         fn try_from__fails_on_unexpected_parse_trees() {
@@ -480,42 +509,82 @@ mod tests {
             use super::*;
 
             #[test]
-            #[ignore]
             fn try_from__works_with_expected_parse_trees() {
-                todo!()
+                let parse_tree = RuleParser::parse(Rule::s_exp, "(if (placeholder) foo 85)")
+                    .unwrap()
+                    .next()
+                    .unwrap();
+
+                let ast = SpecialForm::try_from(parse_tree).unwrap();
+                assert!(matches!(
+                    ast,
+                    SpecialForm::If {
+                        predicate,
+                        consequent,
+                        alternative
+                    }
+                    if matches!(*predicate, AstNode::Sexp(_)) && matches!(*consequent.clone(), AstNode::Ident(id) if id == "foo") && matches!(*alternative, AstNode::Num(n) if n == 85)
+                ));
             }
 
             #[test]
-            #[ignore]
             fn try_from__fails_on_parse_tree_with_wrong_arity() {
-                todo!()
+                let parse_tree = RuleParser::parse(Rule::s_exp, "(if)")
+                    .unwrap()
+                    .next()
+                    .unwrap();
+
+                let ast = SpecialForm::try_from(parse_tree);
+                assert!(ast.is_err());
             }
 
             #[test]
-            #[ignore]
             fn try_from__fails_on_well_formed_parse_tree_with_unexpected_argument() {
-                todo!()
+                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(if 69 420 "foo")"#)
+                    .unwrap()
+                    .next()
+                    .unwrap();
+
+                let ast = SpecialForm::try_from(parse_tree);
+                assert!(ast.is_err());
             }
         }
         mod def_var {
             use super::*;
 
             #[test]
-            #[ignore]
             fn try_from__works_with_expected_parse_trees() {
-                todo!()
+                let parse_tree = RuleParser::parse(Rule::s_exp, "(def-var foo 420)")
+                    .unwrap()
+                    .next()
+                    .unwrap();
+
+                let ast = SpecialForm::try_from(parse_tree).unwrap();
+                assert!(matches!(ast, SpecialForm::DefVar {
+                    name, value
+                } if name == "foo" && matches!(*value, AstNode::Num(n) if n == 420)));
             }
 
             #[test]
-            #[ignore]
             fn try_from__fails_on_parse_tree_with_wrong_arity() {
-                todo!()
+                let parse_tree = RuleParser::parse(Rule::s_exp, "(def-var foo 420 69)")
+                    .unwrap()
+                    .next()
+                    .unwrap();
+
+                let ast = SpecialForm::try_from(parse_tree);
+                assert!(ast.is_err());
             }
 
             #[test]
-            #[ignore]
             fn try_from__fails_on_well_formed_parse_tree_with_unexpected_argument() {
-                todo!()
+                let parse_tree = RuleParser::parse(Rule::s_exp, "(def-var 420 69)")
+                    .unwrap()
+                    .next()
+                    .unwrap();
+
+                let ast = SpecialForm::try_from(parse_tree);
+                assert!(ast.is_err());
             }
         }
 
@@ -523,21 +592,41 @@ mod tests {
             use super::*;
 
             #[test]
-            #[ignore]
             fn try_from__works_with_expected_parse_trees() {
-                todo!()
+                let parse_tree = RuleParser::parse(
+                    Rule::s_exp,
+                    r#"(def-rule simple-rule (if (placeholder) 420 69))"#,
+                )
+                .unwrap()
+                .next()
+                .unwrap();
+
+                let ast = SpecialForm::try_from(parse_tree).unwrap();
+                assert!(
+                    matches!(ast, SpecialForm::DefRule { name, body } if name == "simple-rule" && matches!(*body, AstNode::Keyword(_)))
+                );
             }
 
             #[test]
-            #[ignore]
             fn try_from__fails_on_parse_tree_with_wrong_arity() {
-                todo!()
+                let parse_tree = RuleParser::parse(Rule::s_exp, "(def-rule foo bar baz)")
+                    .unwrap()
+                    .next()
+                    .unwrap();
+
+                let ast = SpecialForm::try_from(parse_tree);
+                assert!(ast.is_err());
             }
 
             #[test]
-            #[ignore]
             fn try_from__fails_on_well_formed_parse_tree_with_unexpected_argument() {
-                todo!()
+                let parse_tree = RuleParser::parse(Rule::s_exp, "(def-rule 69 DROP)")
+                    .unwrap()
+                    .next()
+                    .unwrap();
+
+                let ast = SpecialForm::try_from(parse_tree);
+                assert!(ast.is_err());
             }
         }
     }
@@ -741,5 +830,19 @@ mod tests {
                 assert!(ast.is_err());
             }
         }
+    }
+
+    mod ast_node {
+        use super::*;
+        use crate::ast::AstNode;
+
+        #[test]
+        fn try_from__works_on_atoms() {}
+
+        #[test]
+        fn try_from__works_on_lists() {}
+
+        #[test]
+        fn try_from__works_on_sample_program() {}
     }
 }
