@@ -7,5 +7,8 @@ use pest_derive::Parser;
 pub struct CSVParser;
 #[cfg(test)]
 mod tests {
-
+    // Included temporarily to test GitHub Actions workflow
+    fn sanity_check() {
+        assert_eq!(1+1, 2);
+    }
 }
