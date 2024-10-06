@@ -78,3 +78,12 @@ async fn main() {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    // Included temporarily to test GitHub Actions workflow
+    #[tokio::test]
+    async fn sanity_check() {
+        assert_eq!(1+1, 2);
+    }
+}
