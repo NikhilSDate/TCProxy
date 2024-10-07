@@ -20,3 +20,15 @@ fn test_example_program() {
     let parse_result = RuleParser::parse(Rule::program, program);
     assert!(parse_result.is_ok(), "parse failed on example program");
 }
+
+#[test]
+fn test_boolean() {
+    let program1 = "(def-var bool-var #t)";
+    let program2 = "(def-var bool-var #f)";
+    let expected = "[program(0, 21, [s_exp(0, 21, [list(0, 21, [list_part(1, 20, [s_exp(1, 8, [atom(1, 8, [ident(1, 8)])]), list_part(9, 20, [s_exp(9, 17, [atom(9, 17, [ident(9, 17)])]), list_part(18, 20, [s_exp(18, 20, [atom(18, 20, [bool(18, 20)])])])])])])]), EOI(21, 21)])]";
+    let parse1 = RuleParser::parse(Rule::program, program1);
+    let parse2 = RuleParser::parse(Rule::program, program2);
+    assert_eq!(parse1.unwrap().to_string(), expected);
+    assert_eq!(parse2.unwrap().to_string(), expected);
+
+}
