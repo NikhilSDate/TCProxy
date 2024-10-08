@@ -30,14 +30,13 @@
 program = {SOI ~ "\n"* ~ (s_exp ~ "\n"*)* ~ s_exp? ~ EOI}
 
 s_exp = {list | atom}
-list = {("(" ~ list_part ~ ")") | "nil"}
-list_part = {s_exp ~ list_part | s_exp}
+list = {("(" ~ s_exp+ ~ ")") | "nil"}
 atom = {ident | number | string | bool}
 
 ident = ${(ASCII_ALPHA | ":") ~ (ASCII_ALPHANUMERIC | "-" | "?" | "!")*}
 string = @{"\"" ~ string_part ~ "\""}
 string_part = @{(!"\"" ~ ASCII)*}
-number = @{ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*}
+number = @{"-"? ~ ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*}
 bool = @{"#t" | "#f"}
 
 WHITESPACE = _{ " " | "\t" | NEWLINE}
