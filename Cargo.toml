@@ -6,4 +6,4 @@ members = [
     "redirector",
     "rulelib",
     "playground"
-]
+, "client"]
