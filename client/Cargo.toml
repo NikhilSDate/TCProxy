@@ -1,0 +1,11 @@
+[package]
+name = "client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tarpc = { version = "0.34",features = ["full"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
+clap = { version = "4.5.20", features = ["derive"] }
+tracing = "0.1.40"
+anyhow = "1.0.89"

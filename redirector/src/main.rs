@@ -1,14 +1,20 @@
 use std::net::Ipv4Addr;
 use std::str::FromStr;
-use tokio::net::TcpListener;
-use tokio::io::copy_bidirectional;
-use tracing::{info, error, event, Level};
-use tracing_subscriber;
 
 use clap::Parser;
+use futures::{future, StreamExt};
+use tarpc::server::incoming::Incoming;
+use tracing::Level;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber;
 use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::layer::SubscriberExt;
+
+use crate::redirector::redirect;
+use crate::rpc::init_rpc;
+
+mod redirector;
+mod rpc;
 
 #[derive(Parser, Debug)]
 #[clap(name = "Reverse TCP Proxy", version="0.1.0", author="Ronan Boyarski, Nikil Date, Ethan Zhang, Somrishi Bannerjee")]
@@ -49,34 +55,14 @@ async fn main() {
         })
         .init();
 
-    let listener = TcpListener::bind(format!("{}:{}", args.bind_ip, args.bind_port))
-        .await.unwrap(); // We should panic here as a failure this early is unrecoverable
+    // Start redirector
+    tokio::spawn(async move { redirect(args.bind_ip, args.bind_port, args.dest_ip, args.dest_port).await } );
 
-    event!(Level::INFO,"Forwarding from {}:{} to {}:{}", args.bind_ip, args.bind_port, args.dest_ip, args.dest_port);
+    // Start RPC server
+    tokio::spawn(async move { init_rpc().await });
 
-    while let Ok((mut inbound, _)) = listener.accept().await {
-        let mut outbound = match tokio::net::TcpStream::connect(format!("{}:{}", args.dest_ip, args.dest_port))
-            .await {
-            Ok(s) => {
-                info!("Received connection from {}", inbound.peer_addr()
-                    .expect("Failed to parse inbound address"));
-                s
-            },
-            Err(e) => {
-                error!("Error connecting to destination: {}", e);
-                continue;
-            }
-        };
-
-        tokio::spawn(async move {
-            match copy_bidirectional(&mut inbound, &mut outbound).await {
-                Ok(_) => {},
-                Err(e) => {
-                    error!("Error forwarding connection: {}", e);
-                }
-            };
-        });
-    }
+    // Wait for both to finish
+    future::pending::<()>().await;
 }
 
 #[cfg(test)]
