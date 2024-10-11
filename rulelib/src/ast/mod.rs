@@ -65,7 +65,7 @@ impl TryFrom<Pair<'_, Rule>> for SpecialForm {
                 value
                     .into_inner()
                     .next()
-                    .expect("an `s_exp` is always either `list` or `ident`"),
+                    .expect("an `s_exp` is always either `list` or `atom`"),
             ),
             Rule::list => {
                 let inner: Vec<_> = value.into_inner().collect();
@@ -212,7 +212,7 @@ impl TryFrom<Pair<'_, Rule>> for RuleOutcome {
                 value
                     .into_inner()
                     .next()
-                    .expect("an `s_exp` is always either `list` or `ident`"),
+                    .expect("an `s_exp` is always either `list` or `atom`"),
             ),
             Rule::list => {
                 let inner: Vec<_> = value.into_inner().collect();
@@ -363,7 +363,7 @@ impl TryFrom<Pair<'_, Rule>> for AstNode {
                     value
                         .into_inner()
                         .next()
-                        .expect("an `s_exp` is always either `list` or `ident`"),
+                        .expect("an `s_exp` is always either `list` or `atom`"),
                 ),
                 Rule::list => {
                     let inner = value
