@@ -2,11 +2,12 @@ use crate::Rule;
 use lazy_static::lazy_static;
 use pest::iterators::Pair;
 use std::collections::HashSet;
-use std::net::IpAddr;
 
 lazy_static! {
-    static ref RESERVED_KEYWORDS: HashSet<&'static str> =
-        HashSet::from(["def-var", "set-mode", "def-rule", "if"]);
+    static ref RESERVED_KEYWORDS: HashSet<&'static str> = HashSet::from([
+        "def-var", "set-mode", "def-rule", "if", "DROP", "REJECT", "REDIRECT", "REPLACE",
+        "REWRITE", "CONTINUE"
+    ]);
 }
 
 #[derive(Debug, Copy, Clone)]
