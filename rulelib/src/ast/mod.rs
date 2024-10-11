@@ -53,7 +53,81 @@ pub enum SpecialForm {
     SetMode { mode: ProxyMode },
 }
 
-// TODO: refactor
+impl SpecialForm {
+    fn parse_if(inner: Vec<Pair<Rule>>) -> Result<Self, AstParseError> {
+        // "if" + predicate + consequent + alternative
+        if inner.len() != 4 {
+            Err(AstParseError::ParseError(format!(
+                "wrong arity for if; expected 3, received {}",
+                inner.len() - 1
+            )))
+        } else {
+            // FIXME: I believe the clones here are necessary
+            let predicate = Box::new(AstNode::try_from(inner[1].clone())?);
+            if !matches!(*predicate, AstNode::Ident(_) | AstNode::Sexp(_)) {
+                return Err(AstParseError::ParseError(
+                    "predicate must be an ident or Sexp".to_string(),
+                ));
+            }
+            let consequent = Box::new(AstNode::try_from(inner[2].clone())?);
+            let alternative = Box::new(AstNode::try_from(inner[3].clone())?);
+
+            Ok(Self::If {
+                predicate,
+                consequent,
+                alternative,
+            })
+        }
+    }
+
+    fn parse_def(
+        special_form: &str,
+        inner: Vec<Pair<Rule>>,
+    ) -> Result<(String, Box<AstNode>), AstParseError> {
+        // def-xxx + name + value
+        if inner.len() != 3 {
+            Err(AstParseError::ParseError(format!(
+                "wrong arity for {}; expected 2, received {}",
+                special_form,
+                inner.len() - 1
+            )))
+        } else {
+            let name = AstNode::try_from(inner[1].clone())?;
+            if let AstNode::Ident(name) = name {
+                let value = Box::new(AstNode::try_from(inner[2].clone())?);
+                Ok((name, value))
+            } else {
+                Err(AstParseError::ParseError(format!(
+                    "{} expected an `ident`, found {:?}",
+                    special_form,
+                    inner[1].as_rule()
+                )))
+            }
+        }
+    }
+
+    fn parse_def_var(inner: Vec<Pair<Rule>>) -> Result<Self, AstParseError> {
+        Self::parse_def("def-var", inner).map(|(name, value)| Self::DefVar { name, value })
+    }
+
+    fn parse_def_rule(inner: Vec<Pair<Rule>>) -> Result<Self, AstParseError> {
+        Self::parse_def("def-rule", inner).map(|(name, body)| Self::DefRule { name, body })
+    }
+
+    fn parse_set_mode(inner: Vec<Pair<Rule>>) -> Result<Self, AstParseError> {
+        // set-mode + OPAQUE/TRANSPARENT
+        if inner.len() != 2 {
+            Err(AstParseError::ParseError(format!(
+                "wrong arity for set-mode; expected 1, received {}",
+                inner.len() - 1
+            )))
+        } else {
+            let mode = ProxyMode::try_from(inner[1].as_str())?;
+            Ok(Self::SetMode { mode })
+        }
+    }
+}
+
 impl TryFrom<Pair<'_, Rule>> for SpecialForm {
     type Error = AstParseError;
 
@@ -76,102 +150,16 @@ impl TryFrom<Pair<'_, Rule>> for SpecialForm {
                 } else {
                     match inner.first() {
                         None => unreachable!("`list_part` always contains at least one child"),
-                        Some(expr) => {
-                            match expr.as_str() {
-                                "if" => {
-                                    // "if" + predicate + consequent + alternative
-                                    if inner.len() != 4 {
-                                        Err(Self::Error::ParseError(format!(
-                                            "wrong arity for if; expected 3, received {}",
-                                            inner.len() - 1
-                                        )))
-                                    } else {
-                                        // I think the clone here is necessary
-                                        let predicate =
-                                            Box::new(AstNode::try_from(inner[1].clone())?);
-                                        if !matches!(
-                                            *predicate,
-                                            AstNode::Ident(_) | AstNode::Sexp(_)
-                                        ) {
-                                            return Err(Self::Error::ParseError(
-                                                "predicate must be an ident or Sexp".to_string(),
-                                            ));
-                                        }
-                                        let consequent =
-                                            Box::new(AstNode::try_from(inner[2].clone())?);
-                                        let alternative =
-                                            Box::new(AstNode::try_from(inner[3].clone())?);
-
-                                        Ok(Self::If {
-                                            predicate,
-                                            consequent,
-                                            alternative,
-                                        })
-                                    }
-                                }
-                                "def-var" => {
-                                    // "def-var" + name + value
-                                    if inner.len() != 3 {
-                                        Err(Self::Error::ParseError(format!(
-                                            "wrong arity for def-var; expected 2, received {}",
-                                            inner.len() - 1
-                                        )))
-                                    } else {
-                                        // encore un fois for the clone (see comment in "if")
-                                        let name = AstNode::try_from(inner[1].clone())?;
-                                        if let AstNode::Ident(name) = name {
-                                            let value =
-                                                Box::new(AstNode::try_from(inner[2].clone())?);
-                                            Ok(Self::DefVar { name, value })
-                                        } else {
-                                            Err(Self::Error::ParseError(format!(
-                                                "def-var expected an `ident`, found {:?}",
-                                                inner[1].as_rule()
-                                            )))
-                                        }
-                                    }
-                                }
-                                // TODO: refactor; this is practically a duplicate of the above code
-                                "def-rule" => {
-                                    // "def-rule" + name + body
-                                    if inner.len() != 3 {
-                                        Err(Self::Error::ParseError(format!(
-                                            "wrong arity for def-rule; expected 2, received {}",
-                                            inner.len() - 1
-                                        )))
-                                    } else {
-                                        // encore un fois for the clone (see comment in "if")
-                                        let name = AstNode::try_from(inner[1].clone())?;
-                                        if let AstNode::Ident(name) = name {
-                                            let body =
-                                                Box::new(AstNode::try_from(inner[2].clone())?);
-                                            Ok(Self::DefRule { name, body })
-                                        } else {
-                                            Err(Self::Error::ParseError(format!(
-                                                "def-rule expected an `ident`, found {:?}",
-                                                inner[1].as_rule()
-                                            )))
-                                        }
-                                    }
-                                }
-                                "set-mode" => {
-                                    // set-mode + OPAQUE/TRANSPARENT
-                                    if inner.len() != 2 {
-                                        Err(Self::Error::ParseError(format!(
-                                            "wrong arity for set-mode; expected 1, received {}",
-                                            inner.len() - 1
-                                        )))
-                                    } else {
-                                        let mode = ProxyMode::try_from(inner[1].as_str())?;
-                                        Ok(Self::SetMode { mode })
-                                    }
-                                }
-                                _ => Err(Self::Error::ParseError(format!(
-                                    "expected a special form, received {}",
-                                    expr.as_str()
-                                ))),
-                            }
-                        }
+                        Some(expr) => match expr.as_str() {
+                            "if" => Self::parse_if(inner),
+                            "def-var" => Self::parse_def_var(inner),
+                            "def-rule" => Self::parse_def_rule(inner),
+                            "set-mode" => Self::parse_set_mode(inner),
+                            _ => Err(Self::Error::ParseError(format!(
+                                "expected a special form, received {}",
+                                expr.as_str()
+                            ))),
+                        },
                     }
                 }
             }
