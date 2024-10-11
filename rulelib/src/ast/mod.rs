@@ -184,9 +184,52 @@ pub enum RuleOutcome {
         pattern: String,
         replace_with: String,
     },
-    // FIXME REMARK: added a CONTINUE outcome to make the piping semantics more obvious for chaining rules (fixme for visibility)
     /// Continue on to the next Rule
     CONTINUE,
+}
+
+impl RuleOutcome {
+    fn parse_redirect(inner: Vec<Pair<Rule>>) -> Result<Self, AstParseError> {
+        // REDIRECT + target + port
+        if inner.len() != 3 {
+            Err(AstParseError::ParseError(format!(
+                "wrong arity for REDIRECT; expected 2, received {}",
+                inner.len() - 1
+            )))
+        } else {
+            // avoiding unnecessary recursion here
+            inner[2]
+                .as_str()
+                .parse::<u8>()
+                .or(Err(AstParseError::ParseError(
+                    "bad port to REDIRECT".to_string(),
+                )))
+                .and_then(|port| {
+                    Ok(RuleOutcome::REDIRECT {
+                        // target validity check to be done elsewhere
+                        addr: inner[1].as_str().trim_matches(|c| c == '"').to_string(),
+                        port,
+                    })
+                })
+        }
+    }
+
+    fn parse_rewrite(inner: Vec<Pair<Rule>>) -> Result<Self, AstParseError> {
+        if inner.len() != 3 {
+            Err(AstParseError::ParseError(format!(
+                "wrong arity for REWRITE; expected 2, received {}",
+                inner.len() - 1
+            )))
+        } else {
+            let pattern = inner[1].as_str().trim_matches(|c| c == '"');
+            let replace_with = inner[2].as_str().trim_matches(|c| c == '"');
+
+            Ok(Self::REWRITE {
+                pattern: pattern.to_string(),
+                replace_with: replace_with.to_string(),
+            })
+        }
+    }
 }
 
 impl TryFrom<Pair<'_, Rule>> for RuleOutcome {
@@ -211,64 +254,14 @@ impl TryFrom<Pair<'_, Rule>> for RuleOutcome {
                 } else {
                     match inner.first() {
                         None => unreachable!("`list_part` always contains at least one child"),
-                        Some(expr) => {
-                            match expr.as_str() {
-                                "REDIRECT" => {
-                                    // REDIRECT + ip addr + port
-                                    if inner.len() != 3 {
-                                        Err(Self::Error::ParseError(format!(
-                                            "wrong arity for REDIRECT; expected 2, received {}",
-                                            inner.len() - 1
-                                        )))
-                                    } else {
-                                        // FIXME: sketchy way to get the string out; ideally, we recursively parse the AstNode and check if it's of variant `String`
-                                        inner[1]
-                                            .as_str()
-                                            .trim_matches(|c| c == '"')
-                                            .parse::<IpAddr>()
-                                            .or(Err(Self::Error::ParseError(
-                                                "bad address to REDIRECT".to_string(),
-                                            )))
-                                            .and_then(|addr| {
-                                                // FIXME: similar remark here; ideally, we check if the AstNode is of variant `Num`
-                                                inner[2]
-                                                    .as_str()
-                                                    .parse::<u8>()
-                                                    .or(Err(Self::Error::ParseError(
-                                                        "bad port to REDIRECT".to_string(),
-                                                    )))
-                                                    .and_then(|port| {
-                                                        Ok(RuleOutcome::REDIRECT {
-                                                            addr: addr.to_string(),
-                                                            port,
-                                                        })
-                                                    })
-                                            })
-                                    }
-                                }
-                                "REWRITE" => {
-                                    if inner.len() != 3 {
-                                        Err(Self::Error::ParseError(format!(
-                                            "wrong arity for REWRITE; expected 2, received {}",
-                                            inner.len() - 1
-                                        )))
-                                    } else {
-                                        let pattern = inner[1].as_str().trim_matches(|c| c == '"');
-                                        let replace_with =
-                                            inner[2].as_str().trim_matches(|c| c == '"');
-
-                                        Ok(Self::REWRITE {
-                                            pattern: pattern.to_string(),
-                                            replace_with: replace_with.to_string(),
-                                        })
-                                    }
-                                }
-                                ident => Err(Self::Error::ParseError(format!(
-                                    "expected one of `REDIRECT` or `REWRITE`, received {}",
-                                    ident
-                                ))),
-                            }
-                        }
+                        Some(expr) => match expr.as_str() {
+                            "REDIRECT" => Self::parse_redirect(inner),
+                            "REWRITE" => Self::parse_rewrite(inner),
+                            ident => Err(Self::Error::ParseError(format!(
+                                "expected one of `REDIRECT` or `REWRITE`, received {}",
+                                ident
+                            ))),
+                        },
                     }
                 }
             }
@@ -773,17 +766,6 @@ mod tests {
             #[test]
             fn try_from__fails_on_well_formed_parse_tree_with_invalid_arity() {
                 let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REDIRECT "127.0.0.1" 80 foo)"#)
-                    .unwrap()
-                    .next()
-                    .unwrap();
-
-                let ast = RuleOutcome::try_from(parse_tree);
-                assert!(ast.is_err());
-            }
-
-            #[test]
-            fn try_from__fails_on_well_formed_parse_tree_with_invalid_address() {
-                let parse_tree = RuleParser::parse(Rule::s_exp, r#"(REDIRECT "aaeuboa" 80)"#)
                     .unwrap()
                     .next()
                     .unwrap();
