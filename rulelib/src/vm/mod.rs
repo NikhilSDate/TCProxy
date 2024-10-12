@@ -12,14 +12,14 @@ enum Instruction {
     NOT(Reg, Reg),       // bitwise NOT
     ITE(Reg, Label, Label),   // if-then-else
     DROP,
-    REDIRECT(Label, Label), // redirect Address, Port,
+    REDIRECT(ObjKey, ObjKey), // redirect Address, Port,
     REJECT,
-    REWRITE(Label, Label), // rewrite find_string replace_string
+    REWRITE(ObjKey, ObjKey), // rewrite find_string replace_string
 }
 
 struct Program {
     instructions: Vec<Instruction>,
-    data: HashMap<ObjKey, String>, // need to figure out how to support multiple object types later
+    data: HashMap<ObjKey, Object>, // need to figure out how to support multiple object types later
 }
 
 const NUM_REGS: usize = 16;
@@ -29,15 +29,16 @@ struct VM {
 
 enum Action {
     DROP,
-    REDIRECT(String, String), // address and port are just strings for now, should be specialized types later
-    REWRITE(String, String), // action already taken, so no need to 
+    REDIRECT(Object, Object), // address and port are just strings for now, should be specialized types later
+    REWRITE(Object, Object), // action already taken, so no need to 
     REJECT,
 }
 
-enum Object {
-    Ipv4Addr,
-    u16,
-    String
+#[derive(PartialEq)]
+enum Object<'a> {
+    IP(&'a Ipv4Addr),
+    Port(&'a u16),
+    Data(&'a Vec<u8>)
 }
 
 
@@ -54,7 +55,7 @@ impl VM {
         self.init();
         let mut pc = 0; // program counter
         while pc < program.instructions.len() {
-            let control_normal = true;
+            let mut control_normal = true;
             match program.instructions[pc] {
                 Instruction::SEQ(r0, key1, key2) => {
                     self.registers[r0] = (program.data[&key1] == program.data[&key2]) as u32;
@@ -68,7 +69,7 @@ impl VM {
                 Instruction::NOT(r0, r1) => {
                     self.registers[r0] = !self.registers[r1];
                 },
-                Instruction::ITE(r0, lab1, lab2) {
+                Instruction::ITE(r0, lab1, lab2) => {
                     if self.registers[r0] != 0 {
                         pc = lab1;
                     } else {
@@ -81,17 +82,20 @@ impl VM {
                 },
                 Instruction::REDIRECT(address_label, port_label) => {
                     // handle invalid labels
-                    return Ok(Action::REDIRECT(program.data[address_label], program.data[port_label]));
+                    return Ok(Action::REDIRECT(program.data[&address_label], program.data[&port_label]));
                 },
                 Instruction::REJECT => {
                     return Ok(Action::REJECT)
                 },
                 Instruction::REWRITE(find_label, replace_label) => {
-                    return Ok(Action::REWRITE(program.data[find_label], program.data[replace_label]));
+                    return Ok(Action::REWRITE(program.data[&find_label], program.data[&replace_label]));
                 }
                 _ => {
                     panic!("Should never get here")
                 }
+            }
+            if control_normal {
+                pc += 1;
             }
         }
         Err("Program ended without action")
