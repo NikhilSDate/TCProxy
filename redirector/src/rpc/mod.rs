@@ -36,21 +36,60 @@ impl RuleSvc for Server {
         };
 
         match conn.execute(
-            "INSERT INTO rulefiles (name, content) VALUES (?1, ?2) RETURNING id",
+            "INSERT INTO rulefiles (name, content) VALUES (?1, ?2)",
             params![name, content],
         ) {
-            Ok(_) => Ok(id as i64),
+            Ok(_) => Ok(conn.last_insert_rowid()),
             Err(e) => Err(Error::Anyhow(format!("Failed to insert rulefile: {}", e)))
         }
     }
     async fn request(self, _: context::Context, id: i64) -> Result<RuleFile> {
-        todo!()
+        let conn = match self.app_state.conn.lock() {
+            Ok(conn) => conn,
+            Err(e) => return Err(Error::Anyhow(format!("Failed to obtain lock on app state: {}", e)))
+        };
+
+        let mut stmt = conn.prepare("SELECT id, name, content FROM rulefiles WHERE id = ?1");
+        if stmt.is_err() {
+            return Err(Error::Anyhow(format!("Failed to prepare statement: {}", stmt.err().unwrap())));
+        }
+        let mut stmt = stmt.unwrap();
+
+        match stmt.query_row(params![id], |row| {
+            Ok(RuleFile {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                content: row.get(2)?,
+            })
+        }) {
+            Ok(r) => Ok(r),
+            Err(e) => Err(Error::Anyhow(format!("Failed to query rulefile: {}", e)))
+        }
     }
     async fn update(self, _: context::Context, id: i64, content: String) -> Result<()> {
-        todo!()
+        let conn = match self.app_state.conn.lock() {
+            Ok(conn) => conn,
+            Err(e) => return Err(Error::Anyhow(format!("Failed to obtain lock on app state: {}", e)))
+        };
+
+        if conn.execute(
+            "INSERT INTO rulefiles (content) VALUES (?1)",
+            params![content],
+        ).is_err() {
+            return Err(Error::Anyhow(format!("Failed to insert rulefile: {}", content)))
+        }
+        Ok(())
     }
     async fn delete(self, _: context::Context, id: i64) -> Result<()> {
-        todo!()
+        let conn = match self.app_state.conn.lock() {
+            Ok(conn) => conn,
+            Err(e) => return Err(Error::Anyhow(format!("Failed to obtain lock on app state: {}", e)))
+        };
+
+        match conn.execute("DELETE FROM rulefiles WHERE id = ?1", params![id]) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Error::Anyhow(format!("Failed to delete rulefile: {}", e)))
+        }
     }
 }
 
