@@ -8,7 +8,7 @@ pub struct AppState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleFile {
-    id: i32,
-    name: String,
-    content: String,
+    pub(crate) id: i64,
+    pub(crate) name: String,
+    pub(crate) content: String,
 }

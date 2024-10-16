@@ -1,15 +1,11 @@
 use std::net::Ipv4Addr;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use clap::Parser;
-use futures::{future, StreamExt};
+use futures::future;
 use rusqlite::Connection;
-use tarpc::server::incoming::Incoming;
 use tracing::Level;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber;
-use tracing_subscriber::fmt::MakeWriter;
-use tracing_subscriber::layer::SubscriberExt;
 use crate::model::AppState;
 use crate::redirector::redirect;
 use crate::rpc::init_rpc;
@@ -73,8 +69,4 @@ async fn main() -> anyhow::Result<()> {
     future::pending::<()>().await;
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
 }

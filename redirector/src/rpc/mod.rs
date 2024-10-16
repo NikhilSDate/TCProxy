@@ -93,6 +93,7 @@ mod tests {
     use rusqlite::Connection;
     use super::*;
 
+    #[test]
     pub fn test_create() -> anyhow::Result<()> {
         let state = AppState { conn: Arc::new(Mutex::new(Connection::open_in_memory()?)) };
         init_sql(state.clone())?;
@@ -105,12 +106,26 @@ mod tests {
         let name = "TestRule";
         let content = "TestContent";
 
-        let id = conn.execute(
-            "INSERT INTO rulefiles (name, content) VALUES (?1, ?2) RETURNING id",
+        conn.execute(
+            "INSERT INTO rulefiles (name, content) VALUES (?1, ?2)",
             params![name, content],
         )?;
 
+        let id = conn.last_insert_rowid();
         assert_eq!(id, 1);
+
+        let mut stmt = conn.prepare("SELECT id, name, content FROM rulefiles WHERE id = ?1")?;
+        let file = stmt.query_row(params![1], |row| {
+            Ok(RuleFile {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                content: row.get(2)?,
+            })
+        })?;
+
+        assert_eq!(file.id, id);
+        assert_eq!(file.name, name);
+        assert_eq!(file.content, content);
 
         Ok(())
     }

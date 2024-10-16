@@ -1,5 +1,3 @@
-use rusqlite::{Connection, Result, params};
-use std::sync::{Arc, Mutex};
 use tarpc::server::incoming::Incoming;
 use crate::model::AppState;
 
