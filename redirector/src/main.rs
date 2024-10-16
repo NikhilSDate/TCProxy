@@ -1,20 +1,24 @@
 use std::net::Ipv4Addr;
 use std::str::FromStr;
-
+use std::sync::{Arc, Mutex};
 use clap::Parser;
 use futures::{future, StreamExt};
+use rusqlite::Connection;
 use tarpc::server::incoming::Incoming;
 use tracing::Level;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt;
-
+use crate::model::AppState;
 use crate::redirector::redirect;
 use crate::rpc::init_rpc;
 
 mod redirector;
 mod rpc;
+mod sql;
+pub mod model;
+pub mod error;
 
 #[derive(Parser, Debug)]
 #[clap(name = "Reverse TCP Proxy", version="0.1.0", author="Ronan Boyarski, Nikil Date, Ethan Zhang, Somrishi Bannerjee")]
@@ -40,9 +44,13 @@ struct Args {
     log_file: String,
 }
 
+
+
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+
+    let app_state = AppState{ conn: Arc::new(Mutex::new(Connection::open_in_memory()?)) };
 
     // Initialize logging
     tracing_subscriber::fmt()
@@ -59,17 +67,14 @@ async fn main() {
     tokio::spawn(async move { redirect(args.bind_ip, args.bind_port, args.dest_ip, args.dest_port).await } );
 
     // Start RPC server
-    tokio::spawn(async move { init_rpc().await });
+    tokio::spawn(async move { init_rpc(app_state).await });
 
     // Wait for both to finish
     future::pending::<()>().await;
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    // Included temporarily to test GitHub Actions workflow
-    #[tokio::test]
-    async fn sanity_check() {
-        assert_eq!(1+1, 2);
-    }
 }

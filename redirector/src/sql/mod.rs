@@ -1,85 +1,98 @@
 use rusqlite::{Connection, Result, params};
 use std::sync::{Arc, Mutex};
+use tarpc::server::incoming::Incoming;
+use crate::model::AppState;
 
-
-// sample struct for now. will change later
-#[derive(Debug)]
-struct User {
-    id: i32,
-    name: String,
-    age: i32,
-}
-
-fn main() -> Result<()> {
-    // Open a connection to an in-memory SQLite database
-    let conn_init = Connection::open_in_memory()?;
-    let db_conn = Arc::new(Mutex::new(conn));
-
-    let conn = Arc::clone(&db_conn);
+/// Sets up the SQL database. Should only be called once
+pub fn init_sql(app_state: AppState) -> anyhow::Result<()> {
+    let conn = match app_state.conn.lock() {
+        Ok(conn) => conn,
+        Err(e) => anyhow::bail!(e.to_string()),
+    };
 
     // Create: Set up the table
     conn.execute(
-        "CREATE TABLE users (
+        "CREATE TABLE rulefiles (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
-            age INTEGER
+            content TEXT NOT NULL
+        )",
+        [],
+    )?;
+    Ok(())
+}
+
+
+
+/*
+pub fn test_sql() -> anyhow::Result<()> {
+    // Open a connection to an in-memory SQLite database
+    let conn = Connection::open_in_memory()?;
+
+    // Create: Set up the table
+    conn.execute(
+        "CREATE TABLE rulefiles (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            content TEXT NOT NULL
         )",
         [],
     )?;
 
     // Create: Insert
-    let user = User {
+    let file = RuleFile {
         id: 1,
-        name: "Somrishi".to_string(),
-        age: 30,
+        name: "TestFile".to_string(),
+        content: "rulefilecontent".to_string(),
     };
     conn.execute(
-        "INSERT INTO users (id, name, age) VALUES (?1, ?2, ?3)",
-        params![user.id, user.name, user.age],
+        "INSERT INTO rulefiles (id, name, content) VALUES (?1, ?2, ?3)",
+        params![file.id, file.name, file.content],
     )?;
 
     // Read: Query
-    let mut stmt = conn.prepare("SELECT id, name, age FROM users WHERE id = ?1")?;
-    let user = stmt.query_row(params![1], |row| {
-        Ok(User {
+    let mut stmt = conn.prepare("SELECT id, name, content FROM rulefiles WHERE id = ?1")?;
+    let file = stmt.query_row(params![1], |row| {
+        Ok(RuleFile {
             id: row.get(0)?,
             name: row.get(1)?,
-            age: row.get(2)?,
+            content: row.get(2)?,
         })
     })?;
-    println!("Read user: {:?}", user);
+    println!("Read rule file: {:?}", file);
 
     // Update
     conn.execute(
-        "UPDATE users SET age = ?1 WHERE id = ?2",
+        "UPDATE rulefiles SET content = ?1 WHERE id = ?2",
         params![31, 1],
     )?;
 
     // Read again to verify the update
-    let updated_user = stmt.query_row(params![1], |row| {
-        Ok(User {
+    let updated_file = stmt.query_row(params![1], |row| {
+        Ok(RuleFile {
             id: row.get(0)?,
             name: row.get(1)?,
-            age: row.get(2)?,
+            content: row.get(2)?,
         })
     })?;
-    println!("Updated user: {:?}", updated_user);
+    println!("Updated rule file: {:?}", updated_file);
 
     // Delete: Remove
-    conn.execute("DELETE FROM users WHERE id = ?1", params![1])?;
+    conn.execute("DELETE FROM rulefiles WHERE id = ?1", params![1])?;
 
     // Attempt to read the deleted user (this should fail)
     // user doesn't exist testing
     match stmt.query_row(params![1], |row| {
-        Ok(User {
+        Ok(RuleFile {
             id: row.get(0)?,
             name: row.get(1)?,
-            age: row.get(2)?,
+            content: row.get(2)?,
         })
     }) {
-        Ok(_) => println!("User still exists (unexpected)"),
-        Err(e) => println!("User successfully deleted: {}", e),
+        Ok(_) => println!("RuleFile still exists (unexpected)"),
+        Err(e) => println!("RuleFile successfully deleted: {}", e),
     }
 
     Ok(())
 }
+*/
