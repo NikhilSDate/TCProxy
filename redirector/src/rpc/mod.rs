@@ -73,9 +73,8 @@ impl RuleSvc for Server {
         };
 
         if conn.execute(
-            "INSERT INTO rulefiles (content) VALUES (?1)",
-            params![content],
-        ).is_err() {
+            "UPDATE rulefiles SET content = ?1 WHERE id = ?2",
+            params![content, id]).is_err() {
             return Err(Error::Anyhow(format!("Failed to insert rulefile: {}", content)))
         }
         Ok(())
@@ -93,6 +92,7 @@ impl RuleSvc for Server {
     }
 }
 
+/// Used to enforce trait bounds
 async fn spawn(fut: impl Future<Output = ()> + Send + 'static) {
     tokio::spawn(fut);
 }
@@ -133,7 +133,7 @@ mod tests {
     use super::*;
 
     #[test]
-    pub fn test_create() -> anyhow::Result<()> {
+    pub fn test_all_ok() -> anyhow::Result<()> {
         let state = AppState { conn: Arc::new(Mutex::new(Connection::open_in_memory()?)) };
         init_sql(state.clone())?;
 
@@ -142,6 +142,7 @@ mod tests {
             Err(e) => anyhow::bail!("Failed to obtain lock on app state: {}", e)
         };
 
+        // Create test
         let name = "TestRule";
         let content = "TestContent";
 
@@ -153,6 +154,7 @@ mod tests {
         let id = conn.last_insert_rowid();
         assert_eq!(id, 1);
 
+        // Request test
         let mut stmt = conn.prepare("SELECT id, name, content FROM rulefiles WHERE id = ?1")?;
         let file = stmt.query_row(params![1], |row| {
             Ok(RuleFile {
@@ -165,6 +167,37 @@ mod tests {
         assert_eq!(file.id, id);
         assert_eq!(file.name, name);
         assert_eq!(file.content, content);
+
+        // Update test
+        let new_content = "TestUpdateCompleted";
+        conn.execute(
+            "UPDATE rulefiles SET content = ?1 WHERE id = ?2",
+            params![new_content, id])?;
+
+        let mut stmt = conn.prepare("SELECT id, name, content FROM rulefiles WHERE id = ?1")?;
+        let file = stmt.query_row(params![id], |row| {
+            Ok(RuleFile {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                content: row.get(2)?,
+            })
+        })?;
+
+        assert_eq!(file.id, id);
+        assert_eq!(file.name, name);
+        assert_eq!(file.content, new_content);
+
+        // Delete test
+        conn.execute("DELETE FROM rulefiles WHERE id = ?1", params![id])?;
+        let mut stmt = conn.prepare("SELECT id, name, content FROM rulefiles WHERE id = ?1")?;
+        let not_found = stmt.query_row(params![id], |row| {
+            Ok(RuleFile {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                content: row.get(2)?,
+            })
+        });
+        assert!(not_found.is_err());
 
         Ok(())
     }
