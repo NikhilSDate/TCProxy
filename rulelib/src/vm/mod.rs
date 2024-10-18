@@ -28,6 +28,7 @@ struct VM {
     registers: [u32; NUM_REGS],
 }
 
+#[derive(PartialEq)]
 enum Action {
     DROP,
     REDIRECT(Object, Object), // address and port are just strings for now, should be specialized types later
@@ -39,7 +40,7 @@ enum Action {
 enum Object {
     IP(Ipv4Addr),
     Port(u16),
-    Data(Rc<Vec<u8>>),
+    Data(Rc<Vec<u8>>), // TODO: make this a lifetime
 }
 
 struct Packet {
@@ -69,7 +70,7 @@ impl VM {
                     self.registers[r0] = self.registers[r1] | self.registers[r2];
                 }
                 Instruction::NOT(r0, r1) => {
-                    self.registers[r0] = !self.registers[r1];
+                    self.registers[r0] = (!self.registers[r1]) & 1;
                 }
                 Instruction::ITE(r0, lab1, lab2) => {
                     if self.registers[r0] != 0 {
@@ -125,6 +126,8 @@ mod test {
     use std::collections::HashMap;
     use std::net::Ipv4Addr;
     use std::rc::Rc;
+    use crate::vm::Action;
+
     #[test]
     pub fn test_vm_seq() {
         let insns = vec![Instruction::SEQ(0, 0, 1)];
@@ -166,4 +169,40 @@ mod test {
         assert_eq!(vm.registers[5], 1);
         assert_eq!(vm.registers[1], 0);
     }
+
+    #[test]
+    pub fn test_logical() {
+        let mut data = HashMap::new();
+        data.insert(0, Object::Data(Rc::new(vec![1, 4, 8])));
+        data.insert(1, Object::Data(Rc::new(vec![1, 4, 8])));
+        data.insert(2, Object::Port(443));
+        let insns = vec![Instruction::SEQ(0, 0, 1), Instruction::SEQ(1, 0, 2), Instruction::OR(2, 0, 1), Instruction::AND(3, 0, 1), Instruction::ITE(2, 5, 6), Instruction::NOT(5, 5), Instruction::DROP, Instruction::REJECT];
+        let program = Program {
+            instructions: insns,
+            data: data
+        };
+        let packet = Packet {
+            source: (Ipv4Addr::new(0, 0, 0, 0), 16),
+            dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
+            content: None,
+        };
+        let mut vm = VM::new();
+        let result = vm.run_program(&program, &packet);
+        assert!(result.is_ok());
+        assert!(result.unwrap() == Action::DROP);
+        assert_eq!(vm.registers[2], 1);
+        assert_eq!(vm.registers[3], 0);
+        assert_eq!(vm.registers[5], 1);
+    }
+
+    #[test]
+    pub fn test_reset() {
+        let mut vm = VM::new();
+        vm.registers[0] = 1;
+        vm.registers[3] = 1;
+        vm.reset();
+        assert_eq!(vm.registers[0], 0);
+        assert_eq!(vm.registers[3], 0);
+    }
 }
+
