@@ -3,8 +3,16 @@ use std::net::Ipv4Addr;
 use std::rc::Rc;
 
 type Reg = usize;
-type ObjKey = u32;
+type ObjKey = u32; // use positive numbers for HashMap keys, use negative numbers for packet fields
 type Label = usize;
+
+
+const PacketMask: u32 = 0x80000000; // to access packet fields, set MSB of ObjKey to 1
+const PacketSourceIP: ObjKey = 0;
+const PacketSourcePort: ObjKey = 1;
+const PacketDestIP: ObjKey = 2;
+const PacketDestPort: ObjKey = 3;
+const PacketContent: ObjKey = 4;
 
 enum Instruction {
     SEQ(Reg, ObjKey, ObjKey), // set-if-equal
@@ -46,7 +54,7 @@ enum Object {
 struct Packet {
     source: (Ipv4Addr, u16),
     dest: (Ipv4Addr, u16),
-    content: Option<Vec<u8>>,
+    content: Rc::<Vec<u8>>,
 }
 
 impl VM {
@@ -61,7 +69,7 @@ impl VM {
             let mut control_normal = true;
             match program.instructions[pc] {
                 Instruction::SEQ(r0, key1, key2) => {
-                    self.registers[r0] = (program.data[&key1] == program.data[&key2]) as u32;
+                    self.registers[r0] = (self.get_object(key1, program, packet) == self.get_object(key2, program, packet)) as u32;
                 }
                 Instruction::AND(r0, r1, r2) => {
                     self.registers[r0] = self.registers[r1] & self.registers[r2];
@@ -97,15 +105,28 @@ impl VM {
                         program.data[&replace_label].clone(),
                     ));
                 }
-                _ => {
-                    panic!("Should never get here")
-                }
             }
             if control_normal {
                 pc += 1;
             }
         }
         Err("Program ended without action")
+    }
+
+    // this is the "memory controller"
+    pub fn get_object(&self, key: ObjKey, program: &Program, packet: &Packet) -> Result<Object, &str> {
+        if key & PacketMask == 0 {
+            Ok(program.data[&key].clone())
+        } else {
+            match key & !PacketMask {
+                PacketSourceIP => Ok(Object::IP(packet.source.0)),
+                PacketSourcePort => Ok(Object::Port(packet.source.1)),
+                PacketDestIP => Ok(Object::IP(packet.source.0)),
+                PacketDestPort => Ok(Object::Port(packet.source.1)),
+                PacketContent => Ok(Object::Data(packet.content.clone())),
+                _ => Err("Invalid key")
+            }
+        }
     }
 
     // reset all regs to 0
@@ -117,16 +138,9 @@ impl VM {
     }
 }
 
-mod test {
-    use super::VM;
-    use super::{Packet, Program};
-    use crate::vm::Instruction;
-    use crate::vm::ObjKey;
-    use crate::vm::Object;
-    use std::collections::HashMap;
-    use std::net::Ipv4Addr;
-    use std::rc::Rc;
-    use crate::vm::Action;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
     #[test]
     pub fn test_vm_seq() {
@@ -142,9 +156,9 @@ mod test {
         let packet = Packet {
             source: (Ipv4Addr::new(0, 0, 0, 0), 16),
             dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
-            content: None,
+            content: Rc::new(vec![]),
         };
-        let result = vm.run_program(&program, &packet);
+        vm.run_program(&program, &packet);
         assert_eq!(vm.registers[0], 1);
         assert_eq!(vm.registers[1], 0);
     }
@@ -163,9 +177,9 @@ mod test {
         let packet = Packet {
             source: (Ipv4Addr::new(0, 0, 0, 0), 16),
             dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
-            content: None,
+            content: Rc::new(vec![]),
         };
-        let result = vm.run_program(&program, &packet);
+        vm.run_program(&program, &packet);
         assert_eq!(vm.registers[5], 1);
         assert_eq!(vm.registers[1], 0);
     }
@@ -184,7 +198,7 @@ mod test {
         let packet = Packet {
             source: (Ipv4Addr::new(0, 0, 0, 0), 16),
             dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
-            content: None,
+            content: Rc::new(vec![]),
         };
         let mut vm = VM::new();
         let result = vm.run_program(&program, &packet);
