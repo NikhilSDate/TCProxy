@@ -8,11 +8,11 @@ type Label = usize;
 
 
 const PacketMask: u32 = 0x80000000; // to access packet fields, set MSB of ObjKey to 1
-const PacketSourceIP: ObjKey = 0;
-const PacketSourcePort: ObjKey = 1;
-const PacketDestIP: ObjKey = 2;
-const PacketDestPort: ObjKey = 3;
-const PacketContent: ObjKey = 4;
+const PacketSourceIP: ObjKey = 0 | PacketMask;
+const PacketSourcePort: ObjKey = 1 | PacketMask;
+const PacketDestIP: ObjKey = 2 | PacketMask;
+const PacketDestPort: ObjKey = 3 | PacketMask;
+const PacketContent: ObjKey = 4 | PacketMask;
 
 enum Instruction {
     SEQ(Reg, ObjKey, ObjKey), // set-if-equal
@@ -36,7 +36,7 @@ struct VM {
     registers: [u32; NUM_REGS],
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 enum Action {
     DROP,
     REDIRECT(Object, Object), // address and port are just strings for now, should be specialized types later
@@ -44,7 +44,7 @@ enum Action {
     REJECT,
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 enum Object {
     IP(Ipv4Addr),
     Port(u16),
@@ -118,7 +118,7 @@ impl VM {
         if key & PacketMask == 0 {
             Ok(program.data[&key].clone())
         } else {
-            match key & !PacketMask {
+            match key {
                 PacketSourceIP => Ok(Object::IP(packet.source.0)),
                 PacketSourcePort => Ok(Object::Port(packet.source.1)),
                 PacketDestIP => Ok(Object::IP(packet.source.0)),
@@ -141,6 +141,7 @@ impl VM {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::Instruction::*;
 
     #[test]
     pub fn test_vm_seq() {
@@ -217,6 +218,58 @@ mod tests {
         vm.reset();
         assert_eq!(vm.registers[0], 0);
         assert_eq!(vm.registers[3], 0);
+    }
+
+    #[test]
+    pub fn test_redirect_rewrite() {
+        let mut vm = VM::new();
+        let mut data = HashMap::new();
+        
+        let find = Object::Data(Rc::new(vec![0x41]));
+        let replace = Object::Data(Rc::new(vec![0x61]));
+        
+        let redirect_ip = Object::IP(Ipv4Addr::new(123, 123, 123, 123));
+        let redirect_port = Object::Port(442);
+
+        data.insert(0, Object::Data(Rc::new(vec![0x41, 0x41, 0x41])));
+        data.insert(1, find.clone());
+        data.insert(2, replace.clone());
+        data.insert(3, redirect_ip.clone());
+        data.insert(4, redirect_port.clone());
+
+
+        let packet1 = Packet {
+            source: (Ipv4Addr::new(0, 0, 0, 0), 16),
+            dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
+            content: Rc::new(vec![0x41, 0x41, 0x41]),
+        };
+
+        let packet2 = Packet {
+            content: Rc::new(vec![0x42, 0x42, 0x42]),
+            ..packet1
+        };
+        let insns = vec![SEQ(0, PacketContent, 0), ITE(0, 2, 3), REWRITE(1, 2), REDIRECT(3, 4)];
+        
+        let program = Program {
+            data: data,
+            instructions: insns
+        };
+
+        // test with packet that goes to if
+        let result1 = vm.run_program(&program, &packet1);
+        assert!(result1.is_ok());
+        let action1 = result1.unwrap();
+        assert_eq!(action1, Action::REWRITE(find, replace));
+        
+        vm.reset();
+        
+        // test with packet that goes to else
+        let result2 = vm.run_program(&program, &packet2);
+        assert!(result2.is_ok());
+        let action2 = result2.unwrap();
+        assert_eq!(action2, Action::REDIRECT(redirect_ip, redirect_port));
+
+
     }
 }
 
