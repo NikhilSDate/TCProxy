@@ -80,7 +80,6 @@ pub enum SpecialForm {
     /// (def-rule <name> <body>)
     DefRule {
         name: String,
-        // params: HashMap<String, String>,
         body: Box<AstNode>,
     },
     /// (set-mode OPAQUE) or (set-mode TRANSPARENT)
@@ -310,7 +309,7 @@ impl TryFrom<Pair<'_, Rule>> for RuleOutcome {
                 "REJECT" => Ok(Self::REJECT),
                 "CONTINUE" => Ok(Self::CONTINUE),
                 ident => Err(Self::Error::ParseError(format!(
-                    "expected one of `DROP` or `REJECT`, received {}",
+                    "expected one of `DROP`, `REJECT`, or `CONTINUE`, received {}",
                     ident
                 ))),
             },
@@ -346,7 +345,6 @@ impl TryFrom<Pair<'_, Rule>> for Keyword {
 
 #[derive(Debug, Clone)]
 pub enum AstNode {
-    // TODO: find a better name for this
     Keyword(Keyword),
     Num(i64),
     Ident(String),
