@@ -78,10 +78,7 @@ pub enum SpecialForm {
     /// (def-var <name> <value>)
     DefVar { name: String, value: Box<AstNode> },
     /// (def-rule <name> <body>)
-    DefRule {
-        name: String,
-        body: Box<AstNode>,
-    },
+    DefRule { name: String, body: Box<AstNode> },
     /// (set-mode OPAQUE) or (set-mode TRANSPARENT)
     SetMode { mode: ProxyMode },
 }
@@ -302,7 +299,7 @@ impl TryFrom<Pair<'_, Rule>> for RuleOutcome {
                 value
                     .into_inner()
                     .next()
-                    .expect("an `atom` is always either `ident`, `number`, `string`"),
+                    .expect("an `atom` is always either `ident`, `number`, `string`, or `bool`"),
             ),
             Rule::ident => match value.as_str() {
                 "DROP" => Ok(Self::DROP),
@@ -347,6 +344,7 @@ impl TryFrom<Pair<'_, Rule>> for Keyword {
 pub enum AstNode {
     Keyword(Keyword),
     Num(i64),
+    Bool(bool),
     Ident(String),
     String(String),
     Sexp(Vec<AstNode>),
@@ -386,12 +384,11 @@ impl TryFrom<Pair<'_, Rule>> for AstNode {
 
                     Ok(Self::Sexp(inner))
                 }
-                Rule::atom => Self::try_from(
-                    value
-                        .into_inner()
-                        .next()
-                        .expect("an `atom` is always either `ident`, `number`, `string`"),
-                ),
+                Rule::atom => {
+                    Self::try_from(value.into_inner().next().expect(
+                        "an `atom` is always either `ident`, `number`, `string`, or `bool`",
+                    ))
+                }
                 Rule::ident => {
                     let value = value.as_str();
                     if RESERVED_KEYWORDS.contains(value) {
@@ -412,6 +409,11 @@ impl TryFrom<Pair<'_, Rule>> for AstNode {
                         .parse::<i64>()
                         .expect("`number` is guaranteed to be only ascii digits"),
                 )),
+                Rule::bool => match value.as_str() {
+                    "#t" => Ok(Self::Bool(true)),
+                    "#f" => Ok(Self::Bool(false)),
+                    _ => unreachable!("`bool` should only match #t or #f"),
+                },
                 rule => Err(Self::Error::ParseError(format!(
                     "expected `s_expr`, received {:?}",
                     rule
@@ -915,6 +917,13 @@ mod tests {
                 .unwrap();
             let ast = AstNode::try_from(parse_tree).unwrap();
             assert!(matches!(ast, AstNode::String(s) if s == "chicken nuggets"));
+
+            let parse_tree = RuleParser::parse(Rule::s_exp, "#t")
+                .unwrap()
+                .next()
+                .unwrap();
+            let ast = AstNode::try_from(parse_tree).unwrap();
+            assert!(matches!(ast, AstNode::Bool(true)));
         }
 
         #[test]
