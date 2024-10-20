@@ -62,7 +62,7 @@ impl VM {
         Self { registers: regs }
     }
 
-    // Precondition: program is a valid Program (has valid register numbers and labels)
+    /// Precondition: program is a valid Program (has valid register numbers and labels)
     pub fn run_program(&mut self, program: &Program, packet: &Packet) -> Result<Action, &str> {
         let mut pc = 0; // program counter
         while pc < program.instructions.len() {
