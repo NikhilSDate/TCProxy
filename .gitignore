@@ -1,10 +1,12 @@
 
 target/
 
-
+# playground
+playground/src/main.rs
 
 # Nikhil's gitignore
 localrun.sh
 
 # logs
 redirector/log
+

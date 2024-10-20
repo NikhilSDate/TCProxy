@@ -6,7 +6,6 @@ type Reg = usize;
 type ObjKey = u32; // use positive numbers for HashMap keys, use negative numbers for packet fields
 type Label = usize;
 
-
 const PacketMask: u32 = 0x80000000; // to access packet fields, set MSB of ObjKey to 1
 const PacketSourceIP: ObjKey = 0 | PacketMask;
 const PacketSourcePort: ObjKey = 1 | PacketMask;
@@ -28,7 +27,7 @@ enum Instruction {
 
 struct Program {
     instructions: Vec<Instruction>,
-    data: HashMap<ObjKey, Object>, // need to figure out how to support multiple object types later
+    data: HashMap<ObjKey, Object>,
 }
 
 const NUM_REGS: usize = 16;
@@ -39,8 +38,8 @@ struct VM {
 #[derive(PartialEq, Debug)]
 enum Action {
     DROP,
-    REDIRECT(Object, Object), // address and port are just strings for now, should be specialized types later
-    REWRITE(Object, Object),  // action already taken, so no need to
+    REDIRECT(Object, Object),
+    REWRITE(Object, Object),
     REJECT,
 }
 
@@ -54,7 +53,7 @@ enum Object {
 struct Packet {
     source: (Ipv4Addr, u16),
     dest: (Ipv4Addr, u16),
-    content: Rc::<Vec<u8>>,
+    content: Rc<Vec<u8>>,
 }
 
 impl VM {
@@ -63,13 +62,16 @@ impl VM {
         Self { registers: regs }
     }
 
+    // Precondition: program is a valid Program (has valid register numbers and labels)
     pub fn run_program(&mut self, program: &Program, packet: &Packet) -> Result<Action, &str> {
         let mut pc = 0; // program counter
         while pc < program.instructions.len() {
             let mut control_normal = true;
             match program.instructions[pc] {
                 Instruction::SEQ(r0, key1, key2) => {
-                    self.registers[r0] = (self.get_object(key1, program, packet) == self.get_object(key2, program, packet)) as u32;
+                    self.registers[r0] = (self.get_object(key1, program, packet)
+                        == self.get_object(key2, program, packet))
+                        as u32;
                 }
                 Instruction::AND(r0, r1, r2) => {
                     self.registers[r0] = self.registers[r1] & self.registers[r2];
@@ -78,7 +80,7 @@ impl VM {
                     self.registers[r0] = self.registers[r1] | self.registers[r2];
                 }
                 Instruction::NOT(r0, r1) => {
-                    self.registers[r0] = (!self.registers[r1]) & 1;
+                    self.registers[r0] = !self.registers[r1];
                 }
                 Instruction::ITE(r0, lab1, lab2) => {
                     if self.registers[r0] != 0 {
@@ -92,7 +94,6 @@ impl VM {
                     return Ok(Action::DROP);
                 }
                 Instruction::REDIRECT(address_label, port_label) => {
-                    // handle invalid labels
                     return Ok(Action::REDIRECT(
                         program.data[&address_label].clone(),
                         program.data[&port_label].clone(),
@@ -114,7 +115,12 @@ impl VM {
     }
 
     // this is the "memory controller"
-    pub fn get_object(&self, key: ObjKey, program: &Program, packet: &Packet) -> Result<Object, &str> {
+    pub fn get_object(
+        &self,
+        key: ObjKey,
+        program: &Program,
+        packet: &Packet,
+    ) -> Result<Object, &str> {
         if key & PacketMask == 0 {
             Ok(program.data[&key].clone())
         } else {
@@ -124,7 +130,7 @@ impl VM {
                 PacketDestIP => Ok(Object::IP(packet.source.0)),
                 PacketDestPort => Ok(Object::Port(packet.source.1)),
                 PacketContent => Ok(Object::Data(packet.content.clone())),
-                _ => Err("Invalid key")
+                _ => Err("Invalid key"),
             }
         }
     }
@@ -132,16 +138,14 @@ impl VM {
     // reset all regs to 0
     pub fn reset(&mut self) {
         // consider optimizing with mutable iterator
-        for i in 0..self.registers.len() {
-            self.registers[i] = 0;
-        }
+        self.registers.iter_mut().for_each(|x| *x = 0);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::Instruction::*;
+    use super::*;
 
     #[test]
     pub fn test_vm_seq() {
@@ -191,10 +195,19 @@ mod tests {
         data.insert(0, Object::Data(Rc::new(vec![1, 4, 8])));
         data.insert(1, Object::Data(Rc::new(vec![1, 4, 8])));
         data.insert(2, Object::Port(443));
-        let insns = vec![Instruction::SEQ(0, 0, 1), Instruction::SEQ(1, 0, 2), Instruction::OR(2, 0, 1), Instruction::AND(3, 0, 1), Instruction::ITE(2, 5, 6), Instruction::NOT(5, 5), Instruction::DROP, Instruction::REJECT];
+        let insns = vec![
+            Instruction::SEQ(0, 0, 1),
+            Instruction::SEQ(1, 0, 2),
+            Instruction::OR(2, 0, 1),
+            Instruction::AND(3, 0, 1),
+            Instruction::ITE(2, 5, 6),
+            Instruction::NOT(5, 5),
+            Instruction::DROP,
+            Instruction::REJECT,
+        ];
         let program = Program {
             instructions: insns,
-            data: data
+            data: data,
         };
         let packet = Packet {
             source: (Ipv4Addr::new(0, 0, 0, 0), 16),
@@ -207,7 +220,7 @@ mod tests {
         assert!(result.unwrap() == Action::DROP);
         assert_eq!(vm.registers[2], 1);
         assert_eq!(vm.registers[3], 0);
-        assert_eq!(vm.registers[5], 1);
+        assert_eq!(vm.registers[5], !0);
     }
 
     #[test]
@@ -224,10 +237,10 @@ mod tests {
     pub fn test_redirect_rewrite() {
         let mut vm = VM::new();
         let mut data = HashMap::new();
-        
+
         let find = Object::Data(Rc::new(vec![0x41]));
         let replace = Object::Data(Rc::new(vec![0x61]));
-        
+
         let redirect_ip = Object::IP(Ipv4Addr::new(123, 123, 123, 123));
         let redirect_port = Object::Port(442);
 
@@ -236,7 +249,6 @@ mod tests {
         data.insert(2, replace.clone());
         data.insert(3, redirect_ip.clone());
         data.insert(4, redirect_port.clone());
-
 
         let packet1 = Packet {
             source: (Ipv4Addr::new(0, 0, 0, 0), 16),
@@ -248,11 +260,16 @@ mod tests {
             content: Rc::new(vec![0x42, 0x42, 0x42]),
             ..packet1
         };
-        let insns = vec![SEQ(0, PacketContent, 0), ITE(0, 2, 3), REWRITE(1, 2), REDIRECT(3, 4)];
-        
+        let insns = vec![
+            SEQ(0, PacketContent, 0),
+            ITE(0, 2, 3),
+            REWRITE(1, 2),
+            REDIRECT(3, 4),
+        ];
+
         let program = Program {
             data: data,
-            instructions: insns
+            instructions: insns,
         };
 
         // test with packet that goes to if
@@ -260,16 +277,13 @@ mod tests {
         assert!(result1.is_ok());
         let action1 = result1.unwrap();
         assert_eq!(action1, Action::REWRITE(find, replace));
-        
+
         vm.reset();
-        
+
         // test with packet that goes to else
         let result2 = vm.run_program(&program, &packet2);
         assert!(result2.is_ok());
         let action2 = result2.unwrap();
         assert_eq!(action2, Action::REDIRECT(redirect_ip, redirect_port));
-
-
     }
 }
-
