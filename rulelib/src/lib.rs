@@ -5,3 +5,4 @@ use pest_derive::Parser;
 pub struct RuleParser;
 #[cfg(test)]
 mod tests;
+mod vm;
