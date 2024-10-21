@@ -126,6 +126,10 @@ pub async fn init_rpc(app_state: AppState) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// WARNING: These tests will have artificially bad coverage when measured with cargo-llvm-cov!
+/// This is because the functions in the RPC operate in the context of a remote connection
+/// Because we are doing unit tests, and not integration tests, it's not appropriate to do this
+/// so the code has been lifted out from the functions
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
