@@ -1,10 +1,10 @@
 name: Testing
 
 on:
+  workflow_dispatch:
   push:
-    branches: [ $default-branch ]
   pull_request:
-    branches: [ $default-branch ]
+    types: [opened]
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,8 +16,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: test_redirector
-      run: cd redirector; cargo test --verbose
-    - name: test_rules
-      run: cd ../rulelib; cargo test --verbose
+    - name: test
+      run: cargo test --verbose
 

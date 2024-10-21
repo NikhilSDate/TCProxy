@@ -45,4 +45,8 @@ async fn main() -> anyhow::Result<()> {
     sleep(Duration::from_micros(1)).await;
 
     Ok(())
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> d14a14dd4ac178a28e6e2cc4af5f591956ea8d31

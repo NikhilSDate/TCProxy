@@ -1,14 +1,11 @@
-
-use pest::Parser;
 use pest_derive::Parser;
 
+// TODO: find a better name for this
+mod ast;
+
 #[derive(Parser)]
-#[grammar = "grammar.pest"]
-pub struct CSVParser;
+#[grammar = "language.pest"]
+pub struct RuleParser;
 #[cfg(test)]
-mod tests {
-    // Included temporarily to test GitHub Actions workflow
-    fn sanity_check() {
-        assert_eq!(1+1, 2);
-    }
-}
+mod tests;
+mod vm;

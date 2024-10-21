@@ -1,4 +1,5 @@
 use std::net::Ipv4Addr;
+<<<<<<< HEAD
 use std::sync::{Arc, Mutex};
 use clap::Parser;
 use futures::future;
@@ -7,14 +8,30 @@ use tracing::Level;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber;
 use crate::model::AppState;
+=======
+use std::str::FromStr;
+
+use clap::Parser;
+use futures::{future, StreamExt};
+use tarpc::server::incoming::Incoming;
+use tracing::Level;
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber;
+use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::layer::SubscriberExt;
+
+>>>>>>> d14a14dd4ac178a28e6e2cc4af5f591956ea8d31
 use crate::redirector::redirect;
 use crate::rpc::init_rpc;
 
 mod redirector;
 mod rpc;
+<<<<<<< HEAD
 mod sql;
 pub mod model;
 pub mod error;
+=======
+>>>>>>> d14a14dd4ac178a28e6e2cc4af5f591956ea8d31
 
 #[derive(Parser, Debug)]
 #[clap(name = "Reverse TCP Proxy", version="0.1.0", author="Ronan Boyarski, Nikil Date, Ethan Zhang, Somrishi Bannerjee")]
@@ -63,10 +80,17 @@ async fn main() -> anyhow::Result<()> {
     tokio::spawn(async move { redirect(args.bind_ip, args.bind_port, args.dest_ip, args.dest_port).await } );
 
     // Start RPC server
+<<<<<<< HEAD
     tokio::spawn(async move { init_rpc(app_state).await });
 
     // Wait for both to finish
     future::pending::<()>().await;
 
     Ok(())
+=======
+    tokio::spawn(async move { init_rpc().await });
+
+    // Wait for both to finish
+    future::pending::<()>().await;
+>>>>>>> d14a14dd4ac178a28e6e2cc4af5f591956ea8d31
 }
