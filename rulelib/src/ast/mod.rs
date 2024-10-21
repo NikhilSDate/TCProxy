@@ -21,7 +21,7 @@
 *
 * At a high level, we have a few 'special cases' of terminal nodes, encapsulated in the `Keyword` enum:
 *  - Special Forms, which define terms that have a different order of evaluation from other terms
-*                   (see the doc comment on the `SpecialForm` enum for more details), and
+*    (see the doc comment on the `SpecialForm` enum for more details), and
 *  - Outcomes, which define the outcomes of a proxy rule.
 
 * The parser will, at each step, try to match patterns in sequence:
@@ -29,7 +29,7 @@
 *  - If not, then we match on the structure of the node:
 *    * If its a terminal, then we've reached a leaf node; hence, return the respective `AstNode` variant.
 *    * Otherwise, it's a non-terminal; so, we recursively descend on the node's children and collect their values
-*      into the particular non-terminal variant.
+*    into the particular non-terminal variant.
 */
 use crate::Rule;
 use lazy_static::lazy_static;
@@ -175,11 +175,11 @@ impl TryFrom<Pair<'_, Rule>> for SpecialForm {
                 let inner: Vec<_> = value.into_inner().collect();
                 if inner.is_empty() {
                     Err(Self::Error::ParseError(
-                        "expected `list_part`, found `nil`".to_string(),
+                        "expected non-empty list, found `nil`".to_string(),
                     ))
                 } else {
                     match inner.first() {
-                        None => unreachable!("`list_part` always contains at least one child"),
+                        None => unreachable!("list is non-empty"),
                         Some(expr) => match expr.as_str() {
                             "if" => Self::parse_if(inner),
                             "def-var" => Self::parse_def_var(inner),
@@ -234,12 +234,10 @@ impl RuleOutcome {
                 .or(Err(AstParseError::ParseError(
                     "bad port to REDIRECT".to_string(),
                 )))
-                .and_then(|port| {
-                    Ok(RuleOutcome::REDIRECT {
-                        // target validity check to be done elsewhere
-                        addr: inner[1].as_str().trim_matches(|c| c == '"').to_string(),
-                        port,
-                    })
+                .map(|port| RuleOutcome::REDIRECT {
+                    // target validity check to be done elsewhere
+                    addr: inner[1].as_str().trim_matches(|c| c == '"').to_string(),
+                    port,
                 })
         }
     }
@@ -279,11 +277,11 @@ impl TryFrom<Pair<'_, Rule>> for RuleOutcome {
                 let inner: Vec<_> = value.into_inner().collect();
                 if inner.is_empty() {
                     Err(Self::Error::ParseError(
-                        "expected `list_part`, found `nil`".to_string(),
+                        "expected non-empty list, found `nil`".to_string(),
                     ))
                 } else {
                     match inner.first() {
-                        None => unreachable!("`list_part` always contains at least one child"),
+                        None => unreachable!("list is non-empty"),
                         Some(expr) => match expr.as_str() {
                             "REDIRECT" => Self::parse_redirect(inner),
                             "REWRITE" => Self::parse_rewrite(inner),
