@@ -7,6 +7,9 @@ playground/src/main.rs
 # Nikhil's gitignore
 localrun.sh
 
+# Ethan's gitignore
+.idea
+
 # logs
 redirector/log
 
