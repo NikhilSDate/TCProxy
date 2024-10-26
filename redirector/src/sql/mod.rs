@@ -1,4 +1,3 @@
-use tarpc::server::incoming::Incoming;
 use crate::model::AppState;
 
 /// Sets up the SQL database. Should only be called once
