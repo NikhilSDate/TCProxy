@@ -169,6 +169,33 @@ mod tests {
     }
 
     #[test]
+    pub fn test_ip_equals() {
+        let insns = vec![
+            SEQ(0, 0, PacketSourceIP),
+            ITE(0, 2, 3),
+            DROP,
+            REDIRECT(1, 2)
+        ];
+        let mut data = HashMap::new();
+        data.insert(0, Object::IP(Ipv4Addr::new(123, 123, 123, 123)));
+        data.insert(1, Object::IP(Ipv4Addr::new(128, 128, 128, 128)));
+        data.insert(2, Object::Port(443));
+        let program = Program {
+            instructions: insns,
+            data: data,
+        };
+        let mut vm = VM::new();
+        let packet = Packet {
+            source: (Ipv4Addr::new(123, 123, 123, 123), 16),
+            dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
+            content: Rc::new(vec![]),
+        };
+        let result = vm.run_program(&program, &packet);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Action::DROP);
+    }
+
+    #[test]
     pub fn test_vm_data() {
         let insns: Vec<Instruction> = vec![Instruction::SEQ(5, 0, 1)];
         let mut data = HashMap::new();
