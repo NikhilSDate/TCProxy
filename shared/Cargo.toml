@@ -1,0 +1,8 @@
+[package]
+name = "shared"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tarpc = { version = "0.34.0", features = ["full"] }
+serde = { version = "1.0.210", features = ["derive"] }

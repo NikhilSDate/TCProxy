@@ -37,7 +37,7 @@ impl Run for Command {
     }
 }
 
-/// Lists all commands in Vector form for syntax highlighting
+/// Lists all commands in vector form for syntax highlighting
 impl Command {
     pub fn all_commands() -> Vec<String> {
         let mut commands = vec!["help".to_string() /* included by clap */];
