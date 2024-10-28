@@ -2,18 +2,19 @@ use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::rc::Rc;
 
-type Reg = usize;
-type ObjKey = u32; // use positive numbers for HashMap keys, use negative numbers for packet fields
-type Label = usize;
+pub(crate) type Reg = usize;
+pub(crate) type ObjKey = u32; // use positive numbers for HashMap keys, use negative numbers for packet fields
+pub(crate) type Label = usize;
 
-const PacketMask: u32 = 0x80000000; // to access packet fields, set MSB of ObjKey to 1
-const PacketSourceIP: ObjKey = 0 | PacketMask;
-const PacketSourcePort: ObjKey = 1 | PacketMask;
-const PacketDestIP: ObjKey = 2 | PacketMask;
-const PacketDestPort: ObjKey = 3 | PacketMask;
-const PacketContent: ObjKey = 4 | PacketMask;
+const PACKET_MASK: u32 = 0x80000000; // to access packet fields, set MSB of ObjKey to 1
+pub(crate) const PACKET_SOURCE_IP: ObjKey = 0 | PACKET_MASK;
+pub(crate) const PACKET_SOURCE_PORT: ObjKey = 1 | PACKET_MASK;
+const PACKET_DEST_IP: ObjKey = 2 | PACKET_MASK;
+const PACKET_DEST_PORT: ObjKey = 3 | PACKET_MASK;
+pub(crate) const PACKET_CONTENT: ObjKey = 4 | PACKET_MASK;
 
-enum Instruction {
+#[derive(Debug)]
+pub(crate) enum Instruction {
     SEQ(Reg, ObjKey, ObjKey), // set-if-equal
     AND(Reg, Reg, Reg),       // bitwise AND
     OR(Reg, Reg, Reg),        // bitwise OR
@@ -25,9 +26,10 @@ enum Instruction {
     REWRITE(ObjKey, ObjKey), // rewrite find_string replace_string
 }
 
-struct Program {
-    instructions: Vec<Instruction>,
-    data: HashMap<ObjKey, Object>,
+#[derive(Default, Debug)]
+pub(crate) struct Program {
+    pub(crate) instructions: Vec<Instruction>,
+    pub(crate) data: HashMap<ObjKey, Object>,
 }
 
 const NUM_REGS: usize = 16;
@@ -44,7 +46,7 @@ enum Action {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-enum Object {
+pub(crate) enum Object {
     IP(Ipv4Addr),
     Port(u16),
     Data(Rc<Vec<u8>>), // TODO: make this a lifetime
@@ -121,15 +123,15 @@ impl VM {
         program: &Program,
         packet: &Packet,
     ) -> Result<Object, &str> {
-        if key & PacketMask == 0 {
+        if key & PACKET_MASK == 0 {
             Ok(program.data[&key].clone())
         } else {
             match key {
-                PacketSourceIP => Ok(Object::IP(packet.source.0)),
-                PacketSourcePort => Ok(Object::Port(packet.source.1)),
-                PacketDestIP => Ok(Object::IP(packet.source.0)),
-                PacketDestPort => Ok(Object::Port(packet.source.1)),
-                PacketContent => Ok(Object::Data(packet.content.clone())),
+                PACKET_SOURCE_IP => Ok(Object::IP(packet.source.0)),
+                PACKET_SOURCE_PORT => Ok(Object::Port(packet.source.1)),
+                PACKET_DEST_IP => Ok(Object::IP(packet.source.0)),
+                PACKET_DEST_PORT => Ok(Object::Port(packet.source.1)),
+                PACKET_CONTENT => Ok(Object::Data(packet.content.clone())),
                 _ => Err("Invalid key"),
             }
         }
@@ -261,7 +263,7 @@ mod tests {
             ..packet1
         };
         let insns = vec![
-            SEQ(0, PacketContent, 0),
+            SEQ(0, PACKET_CONTENT, 0),
             ITE(0, 2, 3),
             REWRITE(1, 2),
             REDIRECT(3, 4),
