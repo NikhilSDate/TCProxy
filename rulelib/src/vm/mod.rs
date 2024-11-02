@@ -2,18 +2,19 @@ use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::rc::Rc;
 
-type Reg = usize;
-type ObjKey = u32; // use positive numbers for HashMap keys, use negative numbers for packet fields
-type Label = usize;
+pub(crate) type Reg = usize;
+pub(crate) type ObjKey = u32; // use positive numbers for HashMap keys, use negative numbers for packet fields
+pub(crate) type Label = usize;
 
-const PacketMask: u32 = 0x80000000; // to access packet fields, set MSB of ObjKey to 1
-const PacketSourceIP: ObjKey = 0 | PacketMask;
-const PacketSourcePort: ObjKey = 1 | PacketMask;
-const PacketDestIP: ObjKey = 2 | PacketMask;
-const PacketDestPort: ObjKey = 3 | PacketMask;
-const PacketContent: ObjKey = 4 | PacketMask;
+const PACKET_MASK: u32 = 0x80000000; // to access packet fields, set MSB of ObjKey to 1
+pub(crate) const PACKET_SOURCE_IP: ObjKey = 0 | PACKET_MASK;
+pub(crate) const PACKET_SOURCE_PORT: ObjKey = 1 | PACKET_MASK;
+const PACKET_DEST_IP: ObjKey = 2 | PACKET_MASK;
+const PACKET_DEST_PORT: ObjKey = 3 | PACKET_MASK;
+pub(crate) const PACKET_CONTENT: ObjKey = 4 | PACKET_MASK;
 
-enum Instruction {
+#[derive(Debug)]
+pub(crate) enum Instruction {
     SEQ(Reg, ObjKey, ObjKey), // set-if-equal
     AND(Reg, Reg, Reg),       // bitwise AND
     OR(Reg, Reg, Reg),        // bitwise OR
@@ -25,9 +26,10 @@ enum Instruction {
     REWRITE(ObjKey, ObjKey), // rewrite find_string replace_string
 }
 
-struct Program {
-    instructions: Vec<Instruction>,
-    data: HashMap<ObjKey, Object>,
+#[derive(Default, Debug)]
+pub(crate) struct Program {
+    pub(crate) instructions: Vec<Instruction>,
+    pub(crate) data: HashMap<ObjKey, Object>,
 }
 
 const NUM_REGS: usize = 16;
@@ -44,7 +46,7 @@ enum Action {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-enum Object {
+pub(crate) enum Object {
     IP(Ipv4Addr),
     Port(u16),
     Data(Rc<Vec<u8>>), // TODO: make this a lifetime
@@ -121,15 +123,15 @@ impl VM {
         program: &Program,
         packet: &Packet,
     ) -> Result<Object, &str> {
-        if key & PacketMask == 0 {
+        if key & PACKET_MASK == 0 {
             Ok(program.data[&key].clone())
         } else {
             match key {
-                PacketSourceIP => Ok(Object::IP(packet.source.0)),
-                PacketSourcePort => Ok(Object::Port(packet.source.1)),
-                PacketDestIP => Ok(Object::IP(packet.source.0)),
-                PacketDestPort => Ok(Object::Port(packet.source.1)),
-                PacketContent => Ok(Object::Data(packet.content.clone())),
+                PACKET_SOURCE_IP => Ok(Object::IP(packet.source.0)),
+                PACKET_SOURCE_PORT => Ok(Object::Port(packet.source.1)),
+                PACKET_DEST_IP => Ok(Object::IP(packet.source.0)),
+                PACKET_DEST_PORT => Ok(Object::Port(packet.source.1)),
+                PACKET_CONTENT => Ok(Object::Data(packet.content.clone())),
                 _ => Err("Invalid key"),
             }
         }
@@ -146,6 +148,11 @@ impl VM {
 mod tests {
     use super::Instruction::*;
     use super::*;
+
+    use crate::ast::AstNode;
+    use crate::RuleParser;
+    use pest::Parser;
+    use crate::Rule;
 
     #[test]
     pub fn test_vm_seq() {
@@ -288,7 +295,7 @@ mod tests {
             ..packet1
         };
         let insns = vec![
-            SEQ(0, PacketContent, 0),
+            SEQ(0, PACKET_CONTENT, 0),
             ITE(0, 2, 3),
             REWRITE(1, 2),
             REDIRECT(3, 4),
@@ -312,5 +319,50 @@ mod tests {
         assert!(result2.is_ok());
         let action2 = result2.unwrap();
         assert_eq!(action2, Action::REDIRECT(redirect_ip, redirect_port));
+    }
+
+    fn test_program_helper<'a>(program: &'a str, vm: &'a mut VM, packet: &Packet) -> Result<Action, &'a str> {
+        let parse_tree = RuleParser::parse(Rule::program, program)
+            .unwrap()
+            .next()
+            .unwrap();
+        let ast = AstNode::try_from(parse_tree).unwrap();
+        let bytecode = AstNode::codegen(&ast);
+        vm.run_program(&bytecode, packet)
+    }
+
+    #[test]
+    pub fn test_simple_program() {
+        let program = r#"
+        (set-mode OPAQUE)
+
+        (def-var bad-ip "192.0.1.2")
+
+        (def-rule simple-rule
+            (if (exact? :packet-source-ip bad-ip)
+                DROP
+                (REDIRECT "127.0.0.1" 80)))
+        "#;
+        let bad_ip = Ipv4Addr::new(192, 0, 1, 2);
+        let good_ip = Ipv4Addr::new(192, 168, 0, 1);
+        let dest_ip = Ipv4Addr::new(192, 168, 1, 1);
+        let content: Vec<u8> = vec![];
+        let bad_packet = Packet {
+            source: (bad_ip, 80),
+            dest: (dest_ip, 80),
+            content: Rc::new(content.clone())
+        };
+        let good_packet = Packet {
+            source: (good_ip, 80),
+            dest: (dest_ip, 80),
+            content: Rc::new(content.clone())
+        };
+        let mut vm = VM::new();
+        let bad_action = test_program_helper(program, &mut vm, &bad_packet).unwrap();
+        let bad_action_target = Action::DROP;
+        assert_eq!(bad_action, bad_action_target);
+        let good_action = test_program_helper(program, &mut vm, &good_packet).unwrap();
+        let good_action_target = Action::REDIRECT(Object::IP(Ipv4Addr::new(127, 0, 0, 1)), Object::Port(80));
+        assert_eq!(good_action, good_action_target);
     }
 }
