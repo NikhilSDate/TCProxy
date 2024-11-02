@@ -1,26 +1,19 @@
 use std::future::Future;
 use std::net::{Ipv4Addr, SocketAddr};
-use std::process::id;
 use futures::{future, StreamExt};
 use rusqlite::params;
 use tarpc::{context, server, server::Channel};
 use tarpc::server::incoming::Incoming;
 use tarpc::tokio_serde::formats::Json;
 use tracing::{event, Level};
-use crate::model::{AppState, RuleFile};
+use crate::model::AppState;
 use crate::sql::init_sql;
-use crate::error::{Error, Result};
+use shared::error::{Error, Result};
+use shared::services::RuleSvc;
+use shared::model::RuleFile;
 
 /// Constant value for where the RPC server binds to
 const RPC_BIND: (Ipv4Addr, u16) = (Ipv4Addr::LOCALHOST, 50050);
-
-#[tarpc::service]
-trait RuleSvc {
-    async fn create(name: String, content: String) -> Result<i64>;
-    async fn request(id: i64) -> Result<RuleFile>;
-    async fn update(id: i64, content: String) -> Result<()>;
-    async fn delete(id: i64) -> Result<()>;
-}
 
 #[derive(Clone)]
 struct Server {
@@ -49,7 +42,7 @@ impl RuleSvc for Server {
             Err(e) => return Err(Error::Anyhow(format!("Failed to obtain lock on app state: {}", e)))
         };
 
-        let mut stmt = conn.prepare("SELECT id, name, content FROM rulefiles WHERE id = ?1");
+        let stmt = conn.prepare("SELECT id, name, content FROM rulefiles WHERE id = ?1");
         if stmt.is_err() {
             return Err(Error::Anyhow(format!("Failed to prepare statement: {}", stmt.err().unwrap())));
         }

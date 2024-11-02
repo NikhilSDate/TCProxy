@@ -18,5 +18,8 @@ tracing-appender = "0.2.3"
 time = "0.3.36"
 
 # DB
-rusqlite = "0.32.1"
+rusqlite = { version = "0.32.1", features = ["bundled"] }
 serde = { version = "1.0.210", features = ["derive"] }
+
+# Services interface
+shared = { path = "../shared" }

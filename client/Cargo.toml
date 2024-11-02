@@ -9,3 +9,14 @@ tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
 clap = { version = "4.5.20", features = ["derive"] }
 tracing = "0.1.40"
 anyhow = "1.0.89"
+
+# UI
+nu-ansi-term = "0.50.0"
+crossterm = "0.28.1"
+reedline = "0.36.0"
+
+shared = { path = "../shared" }
+serde = { version = "1.0.210", features = ["derive"] }
+derive_more = { version = "1.0.0", features = ["full"] }
+strum = "0.26.3"
+strum_macros = "0.26.4"

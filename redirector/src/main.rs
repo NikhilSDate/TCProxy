@@ -14,7 +14,6 @@ mod redirector;
 mod rpc;
 mod sql;
 pub mod model;
-pub mod error;
 
 #[derive(Parser, Debug)]
 #[clap(name = "Reverse TCP Proxy", version="0.1.0", author="Ronan Boyarski, Nikil Date, Ethan Zhang, Somrishi Bannerjee")]

@@ -1,24 +1,24 @@
-/// Frontend that can interact with RPC
-/// Code mostly stolen from documentation
+use std::net::SocketAddr;
+
 use clap::Parser;
-use std::{net::SocketAddr, time::Duration};
-use tarpc::{client, context, tokio_serde::formats::Json};
-use tokio::time::sleep;
+use tarpc::{client, tokio_serde::formats::Json};
+
+use shared::services::RuleSvcClient;
+use crate::command::Run;
+
+mod command;
+pub mod io;
+mod error;
 
 #[derive(Parser)]
 struct Flags {
     /// Remote RPC server address (ip:port)
-    #[clap(long)]
+    #[clap(short, long, default_value = "127.0.0.1:50050")]
     server_addr: SocketAddr,
-    /// Sets the name to say hello to.
-    #[clap(long)]
-    name: String,
 }
 
-#[tarpc::service]
-pub trait World {
-    /// Returns a greeting for name.
-    async fn hello(name: String) -> String;
+pub struct AppState {
+    client: RuleSvcClient,
 }
 
 #[tokio::main]
@@ -27,22 +27,22 @@ async fn main() -> anyhow::Result<()> {
     let mut transport = tarpc::serde_transport::tcp::connect(flags.server_addr, Json::default);
     transport.config_mut().max_frame_length(usize::MAX);
 
-    let client = WorldClient::new(client::Config::default(), transport.await?).spawn();
+    let client = RuleSvcClient::new(client::Config::default(), transport.await?).spawn();
 
-    let hello = async move {
-        tokio::select! {
-            hello1 = client.hello(context::current(), format!("{}1", flags.name)) => { hello1 }
-        }
+    let mut app_state = AppState { client };
+    loop {
+        let input = match io::readline(None) {
+            Ok(input) => input,
+            Err(err) => { println!("Input error: {:?}", err); continue; },
+        };
+        println!("Input: {:?}", input);
+        let command = match command::Command::try_parse_from(format!("client {}", input).split(" ").collect::<Vec<&str>>()) {
+            Ok(command) => command,
+            Err(err) => { println!("Parse error: {}", err); continue; },
+        };
+        match command.run(&mut app_state).await {
+            Ok(_) => {},
+            Err(err) => { println!("Error executing command: {:?}", err); },
+        };
     }
-        .await;
-
-    match hello {
-        Ok(hello) => println!("{hello:?}"),
-        Err(e) => println!("{:?}", anyhow::Error::from(e)),
-    }
-
-    // Let the background span processor finish.
-    sleep(Duration::from_micros(1)).await;
-
-    Ok(())
 }
