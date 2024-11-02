@@ -149,6 +149,11 @@ mod tests {
     use super::Instruction::*;
     use super::*;
 
+    use crate::ast::AstNode;
+    use crate::RuleParser;
+    use pest::Parser;
+    use crate::Rule;
+
     #[test]
     pub fn test_vm_seq() {
         let insns = vec![Instruction::SEQ(0, 0, 1)];
@@ -287,5 +292,50 @@ mod tests {
         assert!(result2.is_ok());
         let action2 = result2.unwrap();
         assert_eq!(action2, Action::REDIRECT(redirect_ip, redirect_port));
+    }
+
+    fn test_program_helper<'a>(program: &'a str, vm: &'a mut VM, packet: &Packet) -> Result<Action, &'a str> {
+        let parse_tree = RuleParser::parse(Rule::program, program)
+            .unwrap()
+            .next()
+            .unwrap();
+        let ast = AstNode::try_from(parse_tree).unwrap();
+        let bytecode = AstNode::codegen(&ast);
+        vm.run_program(&bytecode, packet)
+    }
+
+    #[test]
+    pub fn test_simple_program() {
+        let program = r#"
+        (set-mode OPAQUE)
+
+        (def-var bad-ip "192.0.1.2")
+
+        (def-rule simple-rule
+            (if (exact? :packet-source-ip bad-ip)
+                DROP
+                (REDIRECT "127.0.0.1" 80)))
+        "#;
+        let bad_ip = Ipv4Addr::new(192, 0, 1, 2);
+        let good_ip = Ipv4Addr::new(192, 168, 0, 1);
+        let dest_ip = Ipv4Addr::new(192, 168, 1, 1);
+        let content: Vec<u8> = vec![];
+        let bad_packet = Packet {
+            source: (bad_ip, 80),
+            dest: (dest_ip, 80),
+            content: Rc::new(content.clone())
+        };
+        let good_packet = Packet {
+            source: (good_ip, 80),
+            dest: (dest_ip, 80),
+            content: Rc::new(content.clone())
+        };
+        let mut vm = VM::new();
+        let bad_action = test_program_helper(program, &mut vm, &bad_packet).unwrap();
+        let bad_action_target = Action::DROP;
+        assert_eq!(bad_action, bad_action_target);
+        let good_action = test_program_helper(program, &mut vm, &good_packet).unwrap();
+        let good_action_target = Action::REDIRECT(Object::IP(Ipv4Addr::new(127, 0, 0, 1)), Object::Port(80));
+        assert_eq!(good_action, good_action_target);
     }
 }
