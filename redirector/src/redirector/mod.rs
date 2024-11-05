@@ -1,6 +1,9 @@
+use std::io;
 use std::net::Ipv4Addr;
-use tokio::io::copy_bidirectional;
-use tokio::net::TcpListener;
+use std::task::{Poll, ready};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, copy_bidirectional};
+use tokio::macros::support::poll_fn;
+use tokio::net::{TcpListener, TcpStream};
 use tracing::{error, event, info, Level};
 
 pub async fn redirect(bind_ip: Ipv4Addr, bind_port: u16, dest_ip: Ipv4Addr, dest_port: u16) {
@@ -23,13 +26,27 @@ pub async fn redirect(bind_ip: Ipv4Addr, bind_port: u16, dest_ip: Ipv4Addr, dest
             }
         };
 
+        let (mut out_in, mut out_out) = outbound.into_split();
+        let (mut in_in, mut in_out) = inbound.into_split();
+
         tokio::spawn(async move {
-            match copy_bidirectional(&mut inbound, &mut outbound).await {
-                Ok(_) => {},
-                Err(e) => {
-                    error!("Error forwarding connection: {}", e);
-                }
-            };
+            loop {
+                let mut buffer = [0; 1024 * 8];
+                out_in.read(&mut buffer).await.unwrap();
+                // println!("Received: {:?}", buffer);
+                in_out.write(&mut buffer).await.unwrap();
+            }
         });
+
+
+        tokio::spawn(async move {
+            loop {
+                let mut buffer = [0; 1024 * 8];
+                in_in.read(&mut buffer).await.unwrap();
+                // println!("Received: {:?}", buffer);
+                out_out.write_all(&buffer).await.unwrap();
+            }
+        });
+
     }
 }
