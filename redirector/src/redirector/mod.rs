@@ -2,6 +2,7 @@ use futures::{future, FutureExt, StreamExt, TryFutureExt};
 use std::cell::RefCell;
 use std::io;
 use std::net::Ipv4Addr;
+use std::process::Output;
 use std::task::{ready, Poll};
 use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::macros::support::poll_fn;
@@ -44,17 +45,38 @@ pub async fn redirect(bind_ip: Ipv4Addr, bind_port: u16, dest_ip: Ipv4Addr, dest
                 }
             };
 
-        let mut reader_stream = ReaderStream::new(inbound);
+        
+        let (orx, mut otx) = outbound.into_split();
+        let (irx, mut itx) = inbound.into_split();
 
-        while let Some(result) = reader_stream.next().await {
-            match result {
-                Ok(bytes) => {
-                    outbound.write_all(&bytes).await;  
-                }
-                Err(e) => {
-                    break;
+        let mut inbound_reader_stream = ReaderStream::new(irx);
+        let mut outbound_reader_stream = ReaderStream::new(orx);
+
+        tokio::spawn(async move {
+            while let Some(result) = inbound_reader_stream.next().await {
+                match result {
+                    Ok(bytes) => {
+                        otx.write_all(&bytes).await;  
+                    }
+                    Err(e) => {
+                        break;
+                    }
                 }
             }
-        }
+        });
+
+        tokio::spawn(async move {
+            while let Some(result) = outbound_reader_stream.next().await {
+                match result {
+                    Ok(bytes) => {
+                        itx.write_all(&bytes).await;  
+                    }
+                    Err(e) => {
+                        break;
+                    }
+                }
+            }
+        });
+
     }
 }
