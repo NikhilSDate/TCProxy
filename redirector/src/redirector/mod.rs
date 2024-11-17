@@ -11,8 +11,34 @@ use tokio_stream::wrappers::TcpListenerStream;
 use tokio_util::bytes::Bytes;
 use tokio_util::io::{ReaderStream, StreamReader};
 use tracing::{error, event, info, Level};
+use crate::model::AppState;
 
-pub async fn redirect(bind_ip: Ipv4Addr, bind_port: u16, dest_ip: Ipv4Addr, dest_port: u16) {
+enum Action {
+    FORWARD(Bytes),
+    DROP,
+    REJECT,
+    REWRITE(Bytes),
+}
+
+fn filter(bytes: Bytes, app_state: &AppState) -> Action {
+    // TODO - connect up to rule file and do real redirection
+    let needle = Bytes::from_static(b"feroxbuster");
+    if needle.len() > bytes.len() {
+        return Action::FORWARD(bytes);
+    }
+
+
+    match bytes.windows(needle.len()).any(|window| window == needle) {
+        true => {
+            Action::REJECT
+        }
+        false => {
+            Action::FORWARD(bytes)
+        }
+    }
+}
+
+pub async fn redirect(bind_ip: Ipv4Addr, bind_port: u16, dest_ip: Ipv4Addr, dest_port: u16, app_state: AppState) {
     let listener = TcpListener::bind(format!("{}:{}", bind_ip, bind_port))
         .await
         .unwrap(); // We should panic here as a failure this early is unrecoverable
@@ -52,11 +78,27 @@ pub async fn redirect(bind_ip: Ipv4Addr, bind_port: u16, dest_ip: Ipv4Addr, dest
         let mut inbound_reader_stream = ReaderStream::new(irx);
         let mut outbound_reader_stream = ReaderStream::new(orx);
 
+        let binding = app_state.clone();
         tokio::spawn(async move {
             while let Some(result) = inbound_reader_stream.next().await {
                 match result {
                     Ok(bytes) => {
-                        otx.write_all(&bytes).await;  
+                        match filter(bytes, &binding) {
+                            Action::FORWARD(bytes) => {
+                                if let Some(e) = otx.write_all(&bytes).await.err() {
+                                    error!("Error writing to outbound stream: {:?}", e);
+                                    break;
+                                }
+                            }
+                            Action::DROP => { continue; }
+                            Action::REJECT => { continue; }
+                            Action::REWRITE(new_bytes) => {
+                                if let Some(e) = otx.write_all(&new_bytes).await.err() {
+                                    error!("Error writing to outbound stream: {:?}", e);
+                                    break;
+                                }
+                            }
+                        }
                     }
                     Err(e) => {
                         break;

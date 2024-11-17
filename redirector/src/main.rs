@@ -59,7 +59,8 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     // Start redirector
-    tokio::spawn(async move { redirect(args.bind_ip, args.bind_port, args.dest_ip, args.dest_port).await } );
+    let binding = app_state.clone();
+    tokio::spawn(async move { redirect(args.bind_ip, args.bind_port, args.dest_ip, args.dest_port, binding).await } );
 
     // Start RPC server
     tokio::spawn(async move { init_rpc(app_state).await });
