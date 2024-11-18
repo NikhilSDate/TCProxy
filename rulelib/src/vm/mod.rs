@@ -178,7 +178,7 @@ mod tests {
     #[test]
     pub fn test_ip_equals() {
         let insns = vec![
-            SEQ(0, 0, PacketSourceIP),
+            SEQ(0, 0, PACKET_SOURCE_IP),
             ITE(0, 2, 3),
             DROP,
             REDIRECT(1, 2)

@@ -16,6 +16,7 @@ struct AstCodeGenEnv {
     obj_key: ObjKey,
     curr_reg: Reg,
     curr_label: Label,
+    should_continue: Label,
 }
 
 impl AstCodeGenEnv {
@@ -46,7 +47,7 @@ impl AstCodeGenEnv {
     }
 
     fn update_instr(&mut self, label: Label, instr: Instruction) {
-        std::mem::replace(
+        let _ = std::mem::replace(
             self.program
                 .instructions
                 .get_mut(label)
@@ -63,6 +64,9 @@ impl AstNode {
         match self {
             AstNode::Program(statements) => {
                 let mut env = AstCodeGenEnv::default();
+                // FIXME: use Object::Port as bools for now
+                env.insert_into_obj("TRUE", Object::Port(1));
+                env.insert_into_obj("FALSE", Object::Port(0));
 
                 // skip the proxy mode check since validation should catch that.
                 for statement in statements.iter().skip(1) {
@@ -104,13 +108,34 @@ fn codegen_rule(env: &mut AstCodeGenEnv, _name: &str, body: &AstNode) -> Label {
                     consequent,
                     alternative,
                 } => {
-                    codegen_pred(env, predicate);
+                    // put the predicate result in the lowest, unused register
                     let curr_reg = env.curr_reg;
-                    let ite = env.add_instr(Instruction::ITE(env.curr_reg, 0, 0));
+                    codegen_pred(env, predicate);
+
+                    let ite = env.add_instr(Instruction::ITE(curr_reg, 0, 0));
+
                     let cons = codegen_rule(env, "", consequent);
+                    // NOTE: We don't need to "skip" to the next rule, since this one is guaranteed to have an outcome
                     let alt = codegen_rule(env, "", alternative);
 
                     env.update_instr(ite, Instruction::ITE(curr_reg, ite + 1, cons + 1));
+
+                    // NOTE: this entire chunk is done, so we can now reuse the registers.
+                    env.curr_reg -= 1;
+
+                    // NOTE: update CONTINUE labels
+                    if env.should_continue > 0 {
+                        if let Instruction::ITE(curr_reg, _, _) =
+                            env.program.instructions[env.should_continue]
+                        {
+                            env.update_instr(
+                                env.should_continue,
+                                Instruction::ITE(curr_reg, alt + 1, 0),
+                            )
+                        }
+                        env.should_continue = 0;
+                    }
+
                     alt + 1
                 }
                 _ => unreachable!("{}", INVALID_PROGRAM),
@@ -122,88 +147,96 @@ fn codegen_rule(env: &mut AstCodeGenEnv, _name: &str, body: &AstNode) -> Label {
 }
 
 fn codegen_pred(env: &mut AstCodeGenEnv, predicate: &AstNode) -> Label {
+    let curr_reg = env.curr_reg;
+    env.curr_reg += 1;
+
     match predicate {
         AstNode::Keyword(_) => todo!("haven't yet handled nested ifs"),
         AstNode::Bool(b) => {
             if *b {
-                env.add_instr(Instruction::SEQ(0, 0, 0))
+                env.add_instr(Instruction::SEQ(
+                    curr_reg,
+                    env.get_obj_key("TRUE"),
+                    env.get_obj_key("TRUE"),
+                ))
             } else {
-                env.add_instr(Instruction::SEQ(0, 0, 0));
-                env.add_instr(Instruction::NOT(0, 0))
+                env.add_instr(Instruction::SEQ(
+                    curr_reg,
+                    env.get_obj_key("TRUE"),
+                    env.get_obj_key("FALSE"),
+                ))
             }
         }
         AstNode::Sexp(expr) => {
             let mut it = expr.iter();
-            // FIXME: error message
             match it.next().unwrap() {
-                AstNode::Ident(s) if s == "exact?" => codegen_exact(env, it.as_slice()),
-                s => unimplemented!("{:?}", s),
+                AstNode::Ident(s) if s == "exact?" => codegen_exact(env, it.as_slice(), curr_reg),
+                s => unimplemented!("unknown predicate: {:?}", s),
             }
         }
-        AstNode::Ident(_) => todo!("handle idents"),
+        // NOTE: we assume that ident has been type-checked to a bool
+        AstNode::Ident(ident) => env.add_instr(Instruction::SEQ(
+            curr_reg,
+            env.get_obj_key(ident),
+            env.get_obj_key("TRUE"),
+        )),
         _ => unreachable!("{}", INVALID_PROGRAM),
     }
 }
 
-// NOTE: the arity should've been checked in valdiate
-fn codegen_exact(env: &mut AstCodeGenEnv, statements: &[AstNode]) -> Label {
-    let args1 = match &statements[0] {
+// NOTE: we assume that we've already validated the arity
+fn codegen_exact(env: &mut AstCodeGenEnv, statements: &[AstNode], curr_reg: Reg) -> Label {
+    let args1 = codegen_get_obj_key(env, &statements[0]);
+    let args2 = codegen_get_obj_key(env, &statements[1]);
+    env.add_instr(Instruction::SEQ(curr_reg, args1, args2))
+}
+
+// NOTE: this function is different from env.get_obj_key in the sense that it allows for
+// immediates, too.
+fn codegen_get_obj_key(env: &mut AstCodeGenEnv, node: &AstNode) -> ObjKey {
+    match node {
         AstNode::Keyword(_) => todo!(),
         AstNode::Num(_) => todo!(),
-        AstNode::Bool(_) => todo!(),
+        AstNode::Bool(true) => env.get_obj_key("TRUE"),
+        AstNode::Bool(false) => env.get_obj_key("FALSE"),
         AstNode::Ident(s) => match s.as_str() {
             ":packet-source-ip" => PACKET_SOURCE_IP,
             ":packet-source-port" => PACKET_SOURCE_PORT,
             ":packet-content" => PACKET_CONTENT,
-            _ => env.get_obj_key(s)
+            _ => env.get_obj_key(s),
         },
         AstNode::String(s) => env.insert_into_obj(
             &format!("{}", env.obj_key),
             Object::IP(s.parse().expect("Invalid IP")),
         ),
         AstNode::Sexp(_) => todo!(),
-        AstNode::Program(_) => todo!(),
-    };
-
-    let args2 = match &statements[1] {
-        AstNode::Keyword(_) => todo!(),
-        AstNode::Num(_) => todo!(),
-        AstNode::Bool(_) => todo!(),
-        AstNode::Ident(s) => match s.as_str() {
-            ":packet-source-ip" => PACKET_SOURCE_IP,
-            ":packet-source-port" => PACKET_SOURCE_PORT,
-            ":packet-content" => PACKET_CONTENT,
-            _ => env.get_obj_key(s)
-        },
-        AstNode::String(s) => env.insert_into_obj(
-            &format!("{}", env.obj_key),
-            Object::IP(s.parse().expect("Invalid IP")),
-        ),
-        AstNode::Sexp(_) => todo!(),
-        AstNode::Program(_) => todo!(),
-    };
-
-    env.add_instr(Instruction::SEQ(env.curr_reg, args1, args2))
+        _ => unreachable!(),
+    }
 }
 
 fn codegen_var(env: &mut AstCodeGenEnv, name: &str, value: &AstNode) {
+    // FIXME: right now, we clone values whenever they're inserted, even if we know that they exist
+    // as duplicates. That's not really necessary since we don't allow mutation---it would be a lot
+    // better to just store 'references' (ObjKeys) to some objects
     // TODO: only works on atoms for now.
     match value {
-        AstNode::Keyword(_) => todo!("We don't handle If yet"),
+        AstNode::Keyword(_) => todo!("We don't handle if yet"),
+        // NOTE: we assume all nums are ports
         AstNode::Num(n) => {
-            // TODO: assume it's a port.
             env.insert_into_obj(name, Object::Port((*n).try_into().expect("invalid port")));
         }
-        AstNode::Bool(_) => todo!("We don't handle Bools yet"),
+        AstNode::Bool(true) => {
+            env.insert_into_obj(name, Object::Port(1));
+        }
+        AstNode::Bool(false) => {
+            env.insert_into_obj(name, Object::Port(0));
+        }
         AstNode::Ident(ident) => {
-            // FIXME: right now, this tkes the value associated with the ident and clones it;
-            // that's really not necessary since we lack mutation---it would be better to just
-            // store that item's obj_key
             let val = env.get_obj(ident);
             env.insert_into_obj(name, val);
         }
+        // NOTE: we assume all strings are IPv4 addresses
         AstNode::String(s) => {
-            // TODO: for now, we only handle IPv4 addresses
             env.insert_into_obj(name, Object::IP(s.parse().expect("Invalid IP")));
         }
         AstNode::Sexp(_) => todo!("We don't handle Sexp's yet"),
@@ -216,7 +249,7 @@ fn codegen_outcome(env: &mut AstCodeGenEnv, outcome: &RuleOutcome) -> Label {
         RuleOutcome::DROP => env.add_instr(Instruction::DROP),
         RuleOutcome::REJECT => env.add_instr(Instruction::REJECT),
         // FIXME: RuleOutcome::REDIRECT should take a u16 for port.
-        // TODO: implement lookup for symbols
+        // TODO: implement lookup for addr and port
         RuleOutcome::REDIRECT { addr, port } => {
             let addr = env.insert_into_obj(
                 &(format!("{}", env.obj_key)),
@@ -245,7 +278,16 @@ fn codegen_outcome(env: &mut AstCodeGenEnv, outcome: &RuleOutcome) -> Label {
         // this current instruction.
         // Basically, we'll end up back-mutating the intructions list, perhaps via
         // `std::mem::replace`.
-        RuleOutcome::CONTINUE => todo!(),
+        RuleOutcome::CONTINUE => {
+            let curr_reg = env.curr_reg;
+
+            let _ = codegen_pred(env, &AstNode::Bool(true));
+            env.should_continue = env.add_instr(Instruction::ITE(curr_reg, 0, 0));
+
+            env.curr_reg -= 1;
+
+            env.should_continue
+        }
     }
 }
 
@@ -264,6 +306,34 @@ mod tests {
             (set-mode OPAQUE)
 
             (def-var bad-ip "192.0.1.2")
+
+            (def-rule simple-rule
+                (if (exact? :packet-source-ip bad-ip)
+                    DROP
+                    (REDIRECT "127.0.0.1" 80)))
+        "#;
+
+        let parse_tree = RuleParser::parse(Rule::program, program)
+            .unwrap()
+            .next()
+            .unwrap();
+        let ast = AstNode::try_from(parse_tree).unwrap();
+
+        let bytecode = AstNode::codegen(&ast);
+        dbg!(&bytecode);
+    }
+
+    #[test]
+    fn test1() {
+        let program = r#"
+            (set-mode OPAQUE)
+
+            (def-var bad-ip "192.0.1.2")
+
+            (def-rule simple-rewrite
+                (if (exact? :packet-source-ip bad-ip)
+                    (REWRITE "^bar$" "baz")
+                    CONTINUE))
 
             (def-rule simple-rule
                 (if (exact? :packet-source-ip bad-ip)
