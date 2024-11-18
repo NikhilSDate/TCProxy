@@ -64,7 +64,7 @@ impl AstNode {
         match self {
             AstNode::Program(statements) => {
                 let mut env = AstCodeGenEnv::default();
-                // FIXME: use Object::Port as bools for now
+                // FIXME: we use Object::Port as bools for now
                 env.insert_into_obj("TRUE", Object::Port(1));
                 env.insert_into_obj("FALSE", Object::Port(0));
 
@@ -220,7 +220,7 @@ fn codegen_var(env: &mut AstCodeGenEnv, name: &str, value: &AstNode) {
     // better to just store 'references' (ObjKeys) to some objects
     // TODO: only works on atoms for now.
     match value {
-        AstNode::Keyword(_) => todo!("We don't handle if yet"),
+        AstNode::Keyword(_) => todo!("We don't handle if yet (and I don't think we ever want to)"),
         // NOTE: we assume all nums are ports
         AstNode::Num(n) => {
             env.insert_into_obj(name, Object::Port((*n).try_into().expect("invalid port")));
@@ -239,7 +239,7 @@ fn codegen_var(env: &mut AstCodeGenEnv, name: &str, value: &AstNode) {
         AstNode::String(s) => {
             env.insert_into_obj(name, Object::IP(s.parse().expect("Invalid IP")));
         }
-        AstNode::Sexp(_) => todo!("We don't handle Sexp's yet"),
+        AstNode::Sexp(_) => todo!("We don't handle Sexp's yet (and I don't think we ever want to)"),
         AstNode::Program(_) => unreachable!("{}", INVALID_PROGRAM),
     }
 }
@@ -271,11 +271,9 @@ fn codegen_outcome(env: &mut AstCodeGenEnv, outcome: &RuleOutcome) -> Label {
             );
             env.add_instr(Instruction::REWRITE(pattern, replace_with))
         }
-        // TODO: to handle CONTINUEs, I'm thinking that we ought to keep track of the
-        // current instruction, adding the jump to address only after we finish parsing
-        // this current instruction.
-        // Basically, we'll end up back-mutating the intructions list, perhaps via
-        // `std::mem::replace`.
+        // FIXME: Note: this implementation of CONTINUE only supports having A SINGLE continue per
+        // rule. We could probably make it work with more CONTINUEs by keeping track of a vector of
+        // CONTINUEs in env?
         RuleOutcome::CONTINUE => {
             let curr_reg = env.curr_reg;
 
