@@ -248,15 +248,13 @@ fn codegen_outcome(env: &mut AstCodeGenEnv, outcome: &RuleOutcome) -> Label {
     match outcome {
         RuleOutcome::DROP => env.add_instr(Instruction::DROP),
         RuleOutcome::REJECT => env.add_instr(Instruction::REJECT),
-        // FIXME: RuleOutcome::REDIRECT should take a u16 for port.
         // TODO: implement lookup for addr and port
         RuleOutcome::REDIRECT { addr, port } => {
             let addr = env.insert_into_obj(
                 &(format!("{}", env.obj_key)),
                 Object::IP(addr.parse().expect("Invalid IP")),
             );
-            let port =
-                env.insert_into_obj(&(format!("{}", env.obj_key)), Object::Port(*port as u16));
+            let port = env.insert_into_obj(&(format!("{}", env.obj_key)), Object::Port(*port));
             env.add_instr(Instruction::REDIRECT(addr, port))
         }
         RuleOutcome::REWRITE {
