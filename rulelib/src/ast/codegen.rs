@@ -16,7 +16,7 @@ struct AstCodeGenEnv {
     obj_key: ObjKey,
     curr_reg: Reg,
     curr_label: Label,
-    should_continue: Label,
+    should_continue: Vec<Label>,
 }
 
 impl AstCodeGenEnv {
@@ -124,17 +124,15 @@ fn codegen_rule(env: &mut AstCodeGenEnv, _name: &str, body: &AstNode) -> Label {
                     env.curr_reg -= 1;
 
                     // NOTE: update CONTINUE labels
-                    if env.should_continue > 0 {
+                    let continue_labels = env.should_continue.clone();
+                    for continue_label in continue_labels {
                         if let Instruction::ITE(curr_reg, _, _) =
-                            env.program.instructions[env.should_continue]
+                            env.program.instructions[continue_label]
                         {
-                            env.update_instr(
-                                env.should_continue,
-                                Instruction::ITE(curr_reg, alt + 1, 0),
-                            )
+                            env.update_instr(continue_label, Instruction::ITE(curr_reg, alt + 1, 0))
                         }
-                        env.should_continue = 0;
                     }
+                    env.should_continue.clear();
 
                     alt + 1
                 }
@@ -271,18 +269,17 @@ fn codegen_outcome(env: &mut AstCodeGenEnv, outcome: &RuleOutcome) -> Label {
             );
             env.add_instr(Instruction::REWRITE(pattern, replace_with))
         }
-        // FIXME: Note: this implementation of CONTINUE only supports having A SINGLE continue per
-        // rule. We could probably make it work with more CONTINUEs by keeping track of a vector of
-        // CONTINUEs in env?
         RuleOutcome::CONTINUE => {
             let curr_reg = env.curr_reg;
 
             let _ = codegen_pred(env, &AstNode::Bool(true));
-            env.should_continue = env.add_instr(Instruction::ITE(curr_reg, 0, 0));
+            let label = env.add_instr(Instruction::ITE(curr_reg, 0, 0));
+
+            env.should_continue.push(label);
 
             env.curr_reg -= 1;
 
-            env.should_continue
+            label
         }
     }
 }
@@ -291,7 +288,7 @@ fn codegen_outcome(env: &mut AstCodeGenEnv, outcome: &RuleOutcome) -> Label {
 mod tests {
     use pest::Parser;
 
-    use crate::RuleParser;
+    use crate::parser::RuleParser;
 
     use super::*;
 
