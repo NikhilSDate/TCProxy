@@ -1,11 +1,3 @@
-use pest_derive::Parser;
-
-// TODO: find a better name for this
-mod ast;
-
-#[derive(Parser)]
-#[grammar = "language.pest"]
-pub struct RuleParser;
-#[cfg(test)]
-mod tests;
-mod vm;
+pub mod ast;
+pub mod parser;
+pub mod vm;
