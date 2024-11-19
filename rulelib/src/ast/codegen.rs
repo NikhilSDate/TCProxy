@@ -193,8 +193,10 @@ fn codegen_exact(env: &mut AstCodeGenEnv, statements: &[AstNode], curr_reg: Reg)
 // immediates, too.
 fn codegen_get_obj_key(env: &mut AstCodeGenEnv, node: &AstNode) -> ObjKey {
     match node {
-        AstNode::Keyword(_) => todo!(),
-        AstNode::Num(_) => todo!(),
+        AstNode::Keyword(_) => {
+            unreachable!("no well-defined semantics for getting the object key of a keyword")
+        }
+        AstNode::Num(_) => todo!("VM doesn't support 64bit integers"),
         AstNode::Bool(true) => env.get_obj_key("TRUE"),
         AstNode::Bool(false) => env.get_obj_key("FALSE"),
         AstNode::Ident(s) => match s.as_str() {
@@ -207,7 +209,9 @@ fn codegen_get_obj_key(env: &mut AstCodeGenEnv, node: &AstNode) -> ObjKey {
             &format!("{}", env.obj_key),
             Object::IP(s.parse().expect("Invalid IP")),
         ),
-        AstNode::Sexp(_) => todo!(),
+        AstNode::Sexp(_) => {
+            unreachable!("no well-defined semantics for getting the object key of an s_exp")
+        }
         _ => unreachable!(),
     }
 }
@@ -218,7 +222,9 @@ fn codegen_var(env: &mut AstCodeGenEnv, name: &str, value: &AstNode) {
     // better to just store 'references' (ObjKeys) to some objects
     // TODO: only works on atoms for now.
     match value {
-        AstNode::Keyword(_) => todo!("We don't handle if yet (and I don't think we ever want to)"),
+        AstNode::Keyword(_) => {
+            todo!("If not handled in variables (and I don't think we ever want to)")
+        }
         // NOTE: we assume all nums are ports
         AstNode::Num(n) => {
             env.insert_into_obj(name, Object::Port((*n).try_into().expect("invalid port")));
@@ -237,7 +243,9 @@ fn codegen_var(env: &mut AstCodeGenEnv, name: &str, value: &AstNode) {
         AstNode::String(s) => {
             env.insert_into_obj(name, Object::IP(s.parse().expect("Invalid IP")));
         }
-        AstNode::Sexp(_) => todo!("We don't handle Sexp's yet (and I don't think we ever want to)"),
+        AstNode::Sexp(_) => {
+            todo!("s_exp's not handled in variables (and I don't think we ever want to)")
+        }
         AstNode::Program(_) => unreachable!("{}", INVALID_PROGRAM),
     }
 }
