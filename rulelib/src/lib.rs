@@ -8,4 +8,4 @@ mod ast;
 pub struct RuleParser;
 #[cfg(test)]
 mod tests;
-mod vm;
+pub mod vm;

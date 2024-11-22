@@ -25,3 +25,6 @@ serde = { version = "1.0.210", features = ["derive"] }
 shared = { path = "../shared" }
 tokio-stream = {version = "0.1.16", features = ["net"]}
 tokio-util = {version = "0.7.12", features = ["io"]}
+
+# Rules & Compilation
+rulelib = { path = "../rulelib" }

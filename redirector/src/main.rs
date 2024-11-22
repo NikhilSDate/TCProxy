@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex};
 use clap::Parser;
@@ -6,6 +7,8 @@ use rusqlite::Connection;
 use tracing::Level;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber;
+use rulelib::vm::Instruction::{DROP, ITE, REDIRECT, SEQ};
+use rulelib::vm::{Object, PACKET_SOURCE_IP, Program};
 use crate::model::AppState;
 use crate::redirector::redirect;
 use crate::rpc::init_rpc;
@@ -40,12 +43,32 @@ struct Args {
 }
 
 
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    let app_state = AppState{ conn: Arc::new(Mutex::new(Connection::open_in_memory()?)) };
+    // Fake IP checker program (pre-compiled)
+    // If IP != localhost DROP else REDIRECT to DEST_IP:PORT
+    let insns = vec![
+        SEQ(0, 0, PACKET_SOURCE_IP),
+        ITE(0, 2, 3),
+        REDIRECT(1, 2),
+        DROP
+    ];
+
+    let mut data = HashMap::new();
+    data.insert(0, Object::IP(Ipv4Addr::new(127, 0, 0, 1)));
+    data.insert(1, Object::IP(args.dest_ip));
+    data.insert(2, Object::Port(args.dest_port));
+    let program = Program {
+        instructions: insns,
+        data,
+    };
+
+    let app_state = AppState{
+        conn: Arc::new(Mutex::new(Connection::open_in_memory()?)),
+        program
+    };
 
     // Initialize logging
     tracing_subscriber::fmt()

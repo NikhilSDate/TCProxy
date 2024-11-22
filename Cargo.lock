@@ -1057,6 +1057,7 @@ dependencies = [
  "anyhow",
  "clap",
  "futures",
+ "rulelib",
  "rusqlite",
  "serde",
  "shared",
