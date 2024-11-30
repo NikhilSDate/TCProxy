@@ -31,10 +31,12 @@
 *    * Otherwise, it's a non-terminal; so, we recursively descend on the node's children and collect their values
 *    into the particular non-terminal variant.
 */
-use crate::Rule;
+use crate::parser::Rule;
 use lazy_static::lazy_static;
 use pest::iterators::Pair;
 use std::collections::HashSet;
+
+mod codegen;
 
 lazy_static! {
     static ref RESERVED_KEYWORDS: HashSet<&'static str> = HashSet::from([
@@ -431,7 +433,7 @@ pub enum AstParseError {
 #[allow(non_snake_case)]
 mod tests {
     // FIXME: leaky unit tests, but I don't want to manually write out parse trees...
-    use crate::{Rule, RuleParser};
+    use crate::parser::{Rule, RuleParser};
     use pest::Parser;
 
     use crate::ast::AstParseError;
