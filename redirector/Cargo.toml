@@ -28,3 +28,6 @@ tokio-util = {version = "0.7.12", features = ["io"]}
 
 # Rules & Compilation
 rulelib = { path = "../rulelib" }
+pest = "2.6"
+pest_derive = "2.6"
+lazy_static = "1.5"

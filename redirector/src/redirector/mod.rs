@@ -28,7 +28,9 @@ fn convert_to_packet(local_addr: SocketAddr, peer_addr: SocketAddr, content: Byt
 
 fn filter(packet: Packet, app_state: &AppState) -> Action {
     let mut vm = VM::new();
-    let result = vm.run_program(&app_state.program, &packet);
+    // ok to unwrap here: if the unwrap fails something has gone very wrong
+    let program = app_state.program.lock().unwrap();
+    let result = vm.run_program(&*program, &packet);
     if result.is_err() {
         error!("Error running program: {:?}", result.err().unwrap());
         return Action::DROP;

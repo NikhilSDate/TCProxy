@@ -67,7 +67,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app_state = AppState{
         conn: Arc::new(Mutex::new(Connection::open_in_memory()?)),
-        program
+        program: Arc::new(Mutex::new(program))
     };
 
     // Initialize logging

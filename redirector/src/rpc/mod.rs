@@ -1,17 +1,24 @@
-use std::future::Future;
-use std::net::{Ipv4Addr, SocketAddr};
-use futures::{future, StreamExt};
-use rusqlite::params;
-use tarpc::{context, server, server::Channel};
-use tarpc::server::incoming::Incoming;
-use tarpc::tokio_serde::formats::Json;
-use tracing::{event, Level};
 use crate::model::AppState;
 use crate::sql::init_sql;
-use shared::error::{Error, Result};
-use shared::services::RuleSvc;
-use shared::model::RuleFile;
+use futures::{future, StreamExt};
+
+use rulelib::parser::{Rule, RuleParser};
+use rulelib::ast::AstNode;
 use rulelib::vm::Program;
+
+use pest::Parser;
+
+use rusqlite::params;
+use shared::error::{Error, Result};
+use shared::model::RuleFile;
+use shared::services::RuleSvc;
+use std::future::Future;
+use std::net::{Ipv4Addr, SocketAddr};
+use tarpc::server::incoming::Incoming;
+use tarpc::tokio_serde::formats::Json;
+use tarpc::Request;
+use tarpc::{context, server, server::Channel};
+use tracing::{event, Level};
 
 /// Constant value for where the RPC server binds to
 const RPC_BIND: (Ipv4Addr, u16) = (Ipv4Addr::LOCALHOST, 50050);
@@ -19,33 +26,27 @@ const RPC_BIND: (Ipv4Addr, u16) = (Ipv4Addr::LOCALHOST, 50050);
 #[derive(Clone)]
 struct Server {
     addr: SocketAddr,
-    app_state: AppState
+    app_state: AppState,
 }
 
-impl RuleSvc for Server {
-    async fn create(self, _: context::Context, name: String, content: String) -> Result<i64> {
+impl Server {
+    async fn request_helper(&self, _: context::Context, id: i64) -> Result<RuleFile> {
         let conn = match self.app_state.conn.lock() {
             Ok(conn) => conn,
-            Err(e) => return Err(Error::Anyhow(format!("Failed to obtain lock on app state: {}", e)))
-        };
-
-        match conn.execute(
-            "INSERT INTO rulefiles (name, content) VALUES (?1, ?2)",
-            params![name, content],
-        ) {
-            Ok(_) => Ok(conn.last_insert_rowid()),
-            Err(e) => Err(Error::Anyhow(format!("Failed to insert rulefile: {}", e)))
-        }
-    }
-    async fn request(self, _: context::Context, id: i64) -> Result<RuleFile> {
-        let conn = match self.app_state.conn.lock() {
-            Ok(conn) => conn,
-            Err(e) => return Err(Error::Anyhow(format!("Failed to obtain lock on app state: {}", e)))
+            Err(e) => {
+                return Err(Error::Anyhow(format!(
+                    "Failed to obtain lock on app state: {}",
+                    e
+                )))
+            }
         };
 
         let stmt = conn.prepare("SELECT id, name, content FROM rulefiles WHERE id = ?1");
         if stmt.is_err() {
-            return Err(Error::Anyhow(format!("Failed to prepare statement: {}", stmt.err().unwrap())));
+            return Err(Error::Anyhow(format!(
+                "Failed to prepare statement: {}",
+                stmt.err().unwrap()
+            )));
         }
         let mut stmt = stmt.unwrap();
 
@@ -57,34 +58,89 @@ impl RuleSvc for Server {
             })
         }) {
             Ok(r) => Ok(r),
-            Err(e) => Err(Error::Anyhow(format!("Failed to query rulefile: {}", e)))
+            Err(e) => Err(Error::Anyhow(format!("Failed to query rulefile: {}", e))),
         }
+    }
+}
+
+impl RuleSvc for Server {
+    async fn create(self, _: context::Context, name: String, content: String) -> Result<i64> {
+        let conn = match self.app_state.conn.lock() {
+            Ok(conn) => conn,
+            Err(e) => {
+                return Err(Error::Anyhow(format!(
+                    "Failed to obtain lock on app state: {}",
+                    e
+                )))
+            }
+        };
+
+        match conn.execute(
+            "INSERT INTO rulefiles (name, content) VALUES (?1, ?2)",
+            params![name, content],
+        ) {
+            Ok(_) => Ok(conn.last_insert_rowid()),
+            Err(e) => Err(Error::Anyhow(format!("Failed to insert rulefile: {}", e))),
+        }
+    }
+    async fn request(self, context: context::Context, id: i64) -> Result<RuleFile> {
+        self.request_helper(context, id).await
     }
     async fn update(self, _: context::Context, id: i64, content: String) -> Result<()> {
         let conn = match self.app_state.conn.lock() {
             Ok(conn) => conn,
-            Err(e) => return Err(Error::Anyhow(format!("Failed to obtain lock on app state: {}", e)))
+            Err(e) => {
+                return Err(Error::Anyhow(format!(
+                    "Failed to obtain lock on app state: {}",
+                    e
+                )))
+            }
         };
 
-        if conn.execute(
-            "UPDATE rulefiles SET content = ?1 WHERE id = ?2",
-            params![content, id]).is_err() {
-            return Err(Error::Anyhow(format!("Failed to insert rulefile: {}", content)))
+        if conn
+            .execute(
+                "UPDATE rulefiles SET content = ?1 WHERE id = ?2",
+                params![content, id],
+            )
+            .is_err()
+        {
+            return Err(Error::Anyhow(format!(
+                "Failed to insert rulefile: {}",
+                content
+            )));
         }
         Ok(())
     }
     async fn delete(self, _: context::Context, id: i64) -> Result<()> {
         let conn = match self.app_state.conn.lock() {
             Ok(conn) => conn,
-            Err(e) => return Err(Error::Anyhow(format!("Failed to obtain lock on app state: {}", e)))
+            Err(e) => {
+                return Err(Error::Anyhow(format!(
+                    "Failed to obtain lock on app state: {}",
+                    e
+                )))
+            }
         };
 
         match conn.execute("DELETE FROM rulefiles WHERE id = ?1", params![id]) {
             Ok(_) => Ok(()),
-            Err(e) => Err(Error::Anyhow(format!("Failed to delete rulefile: {}", e)))
+            Err(e) => Err(Error::Anyhow(format!("Failed to delete rulefile: {}", e))),
         }
     }
 
+    async fn set_program(self, context: tarpc::context::Context, id: i64) -> Result<()> {
+        let rule_file = self.request_helper(context, id).await?;
+        let parse_tree = RuleParser::parse(Rule::program, &rule_file.content)
+            .unwrap()
+            .next()
+            .unwrap();
+        let ast = AstNode::try_from(parse_tree).unwrap();
+
+        let bytecode = AstNode::codegen(&ast);
+        let mut app_state_program = self.app_state.program.lock().unwrap();
+        *app_state_program = bytecode;
+        Ok(())
+    }
 }
 
 /// Used to enforce trait bounds
@@ -94,9 +150,16 @@ async fn spawn(fut: impl Future<Output = ()> + Send + 'static) {
 
 /// Start the RPC server
 pub async fn init_rpc(app_state: AppState) -> anyhow::Result<()> {
-    let mut listener = tarpc::serde_transport::tcp::listen(&RPC_BIND, Json::default).await.expect("Failed to bind RPC listener");
+    let mut listener = tarpc::serde_transport::tcp::listen(&RPC_BIND, Json::default)
+        .await
+        .expect("Failed to bind RPC listener");
 
-    event!(Level::INFO, "RPC listening on {}:{}", RPC_BIND.0, RPC_BIND.1);
+    event!(
+        Level::INFO,
+        "RPC listening on {}:{}",
+        RPC_BIND.0,
+        RPC_BIND.1
+    );
 
     init_sql(app_state.clone())?;
 
@@ -110,7 +173,7 @@ pub async fn init_rpc(app_state: AppState) -> anyhow::Result<()> {
         .map(|channel| {
             let server = Server {
                 addr: channel.transport().peer_addr().unwrap(),
-                app_state: app_state.clone()
+                app_state: app_state.clone(),
             };
             channel.execute(server.serve()).for_each(spawn)
         })
@@ -127,21 +190,21 @@ pub async fn init_rpc(app_state: AppState) -> anyhow::Result<()> {
 /// so the code has been lifted out from the functions
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
-    use rusqlite::Connection;
     use super::*;
+    use rusqlite::Connection;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     pub fn test_all_ok() -> anyhow::Result<()> {
-        let state = AppState { 
-            conn: Arc::new(Mutex::new(Connection::open_in_memory()?)), 
-            program: Program::default()
+        let state = AppState {
+            conn: Arc::new(Mutex::new(Connection::open_in_memory()?)),
+            program: Arc::new(Mutex::new(Program::default())),
         };
         init_sql(state.clone())?;
 
         let conn = match state.conn.lock() {
             Ok(conn) => conn,
-            Err(e) => anyhow::bail!("Failed to obtain lock on app state: {}", e)
+            Err(e) => anyhow::bail!("Failed to obtain lock on app state: {}", e),
         };
 
         // Create test
@@ -174,7 +237,8 @@ mod tests {
         let new_content = "TestUpdateCompleted";
         conn.execute(
             "UPDATE rulefiles SET content = ?1 WHERE id = ?2",
-            params![new_content, id])?;
+            params![new_content, id],
+        )?;
 
         let mut stmt = conn.prepare("SELECT id, name, content FROM rulefiles WHERE id = ?1")?;
         let file = stmt.query_row(params![id], |row| {
