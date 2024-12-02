@@ -253,7 +253,7 @@ fn codegen_outcome(env: &mut AstCodeGenEnv, outcome: &RuleOutcome) -> Label {
 mod tests {
     use pest::Parser;
 
-    use crate::RuleParser;
+    use crate::parser::RuleParser;
 
     use super::*;
 

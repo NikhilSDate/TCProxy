@@ -11,6 +11,7 @@ use crate::sql::init_sql;
 use shared::error::{Error, Result};
 use shared::services::RuleSvc;
 use shared::model::RuleFile;
+use rulelib::vm::Program;
 
 /// Constant value for where the RPC server binds to
 const RPC_BIND: (Ipv4Addr, u16) = (Ipv4Addr::LOCALHOST, 50050);
@@ -83,6 +84,7 @@ impl RuleSvc for Server {
             Err(e) => Err(Error::Anyhow(format!("Failed to delete rulefile: {}", e)))
         }
     }
+
 }
 
 /// Used to enforce trait bounds
@@ -131,7 +133,10 @@ mod tests {
 
     #[test]
     pub fn test_all_ok() -> anyhow::Result<()> {
-        let state = AppState { conn: Arc::new(Mutex::new(Connection::open_in_memory()?)) };
+        let state = AppState { 
+            conn: Arc::new(Mutex::new(Connection::open_in_memory()?)), 
+            program: Program::default()
+        };
         init_sql(state.clone())?;
 
         let conn = match state.conn.lock() {

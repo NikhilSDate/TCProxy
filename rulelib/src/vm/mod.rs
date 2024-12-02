@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
-use std::rc::Rc;
 use std::sync::Arc;
 
 pub(crate) type Reg = usize;
@@ -151,9 +150,9 @@ mod tests {
     use super::*;
 
     use crate::ast::AstNode;
-    use crate::RuleParser;
+    use crate::parser::RuleParser;
     use pest::Parser;
-    use crate::Rule;
+    use crate::parser::Rule;
 
     #[test]
     pub fn test_vm_seq() {
@@ -169,7 +168,7 @@ mod tests {
         let packet = Packet {
             source: (Ipv4Addr::new(0, 0, 0, 0), 16),
             dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
-            content: Rc::new(vec![]),
+            content: Arc::new(vec![]),
         };
         vm.run_program(&program, &packet);
         assert_eq!(vm.registers[0], 1);
@@ -179,7 +178,7 @@ mod tests {
     #[test]
     pub fn test_ip_equals() {
         let insns = vec![
-            SEQ(0, 0, PacketSourceIP),
+            SEQ(0, 0, PACKET_SOURCE_IP),
             ITE(0, 2, 3),
             DROP,
             REDIRECT(1, 2)
@@ -196,7 +195,7 @@ mod tests {
         let packet = Packet {
             source: (Ipv4Addr::new(123, 123, 123, 123), 16),
             dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
-            content: Rc::new(vec![]),
+            content: Arc::new(vec![]),
         };
         let result = vm.run_program(&program, &packet);
         assert!(result.is_ok());
@@ -207,8 +206,8 @@ mod tests {
     pub fn test_vm_data() {
         let insns: Vec<Instruction> = vec![Instruction::SEQ(5, 0, 1)];
         let mut data = HashMap::new();
-        data.insert(0, Object::Data(Rc::new(vec![1, 2, 3])));
-        data.insert(1, Object::Data(Rc::new(vec![1, 2, 3])));
+        data.insert(0, Object::Data(Arc::new(vec![1, 2, 3])));
+        data.insert(1, Object::Data(Arc::new(vec![1, 2, 3])));
         let program = Program {
             instructions: insns,
             data: data,
@@ -217,7 +216,7 @@ mod tests {
         let packet = Packet {
             source: (Ipv4Addr::new(0, 0, 0, 0), 16),
             dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
-            content: Rc::new(vec![]),
+            content: Arc::new(vec![]),
         };
         vm.run_program(&program, &packet);
         assert_eq!(vm.registers[5], 1);
@@ -227,8 +226,8 @@ mod tests {
     #[test]
     pub fn test_logical() {
         let mut data = HashMap::new();
-        data.insert(0, Object::Data(Rc::new(vec![1, 4, 8])));
-        data.insert(1, Object::Data(Rc::new(vec![1, 4, 8])));
+        data.insert(0, Object::Data(Arc::new(vec![1, 4, 8])));
+        data.insert(1, Object::Data(Arc::new(vec![1, 4, 8])));
         data.insert(2, Object::Port(443));
         let insns = vec![
             Instruction::SEQ(0, 0, 1),
@@ -247,7 +246,7 @@ mod tests {
         let packet = Packet {
             source: (Ipv4Addr::new(0, 0, 0, 0), 16),
             dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
-            content: Rc::new(vec![]),
+            content: Arc::new(vec![]),
         };
         let mut vm = VM::new();
         let result = vm.run_program(&program, &packet);
@@ -273,13 +272,13 @@ mod tests {
         let mut vm = VM::new();
         let mut data = HashMap::new();
 
-        let find = Object::Data(Rc::new(vec![0x41]));
-        let replace = Object::Data(Rc::new(vec![0x61]));
+        let find = Object::Data(Arc::new(vec![0x41]));
+        let replace = Object::Data(Arc::new(vec![0x61]));
 
         let redirect_ip = Object::IP(Ipv4Addr::new(123, 123, 123, 123));
         let redirect_port = Object::Port(442);
 
-        data.insert(0, Object::Data(Rc::new(vec![0x41, 0x41, 0x41])));
+        data.insert(0, Object::Data(Arc::new(vec![0x41, 0x41, 0x41])));
         data.insert(1, find.clone());
         data.insert(2, replace.clone());
         data.insert(3, redirect_ip.clone());
@@ -288,11 +287,11 @@ mod tests {
         let packet1 = Packet {
             source: (Ipv4Addr::new(0, 0, 0, 0), 16),
             dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
-            content: Rc::new(vec![0x41, 0x41, 0x41]),
+            content: Arc::new(vec![0x41, 0x41, 0x41]),
         };
 
         let packet2 = Packet {
-            content: Rc::new(vec![0x42, 0x42, 0x42]),
+            content: Arc::new(vec![0x42, 0x42, 0x42]),
             ..packet1
         };
         let insns = vec![
@@ -351,12 +350,12 @@ mod tests {
         let bad_packet = Packet {
             source: (bad_ip, 80),
             dest: (dest_ip, 80),
-            content: Rc::new(content.clone())
+            content: Arc::new(content.clone())
         };
         let good_packet = Packet {
             source: (good_ip, 80),
             dest: (dest_ip, 80),
-            content: Rc::new(content.clone())
+            content: Arc::new(content.clone())
         };
         let mut vm = VM::new();
         let bad_action = test_program_helper(program, &mut vm, &bad_packet).unwrap();
