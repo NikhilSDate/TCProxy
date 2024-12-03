@@ -181,7 +181,7 @@ mod tests {
             SEQ(0, 0, PACKET_SOURCE_IP),
             ITE(0, 2, 3),
             DROP,
-            REDIRECT(1, 2)
+            REDIRECT(1, 2),
         ];
         let mut data = HashMap::new();
         data.insert(0, Object::IP(Ipv4Addr::new(123, 123, 123, 123)));
@@ -321,7 +321,11 @@ mod tests {
         assert_eq!(action2, Action::REDIRECT(redirect_ip, redirect_port));
     }
 
-    fn test_program_helper<'a>(program: &'a str, vm: &'a mut VM, packet: &Packet) -> Result<Action, &'a str> {
+    fn test_program_helper<'a>(
+        program: &'a str,
+        vm: &'a mut VM,
+        packet: &Packet,
+    ) -> Result<Action, &'a str> {
         let parse_tree = RuleParser::parse(Rule::program, program)
             .unwrap()
             .next()
@@ -362,7 +366,8 @@ mod tests {
         let bad_action_target = Action::DROP;
         assert_eq!(bad_action, bad_action_target);
         let good_action = test_program_helper(program, &mut vm, &good_packet).unwrap();
-        let good_action_target = Action::REDIRECT(Object::IP(Ipv4Addr::new(127, 0, 0, 1)), Object::Port(80));
+        let good_action_target =
+            Action::REDIRECT(Object::IP(Ipv4Addr::new(127, 0, 0, 1)), Object::Port(80));
         assert_eq!(good_action, good_action_target);
     }
 }

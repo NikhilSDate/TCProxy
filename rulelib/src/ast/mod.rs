@@ -210,7 +210,7 @@ pub enum RuleOutcome {
     /// Respond with an ERR_CONNECTION_REFUSED
     REJECT,
     /// Forward the inbound packet to the specified redirect address
-    REDIRECT { addr: String, port: u8 },
+    REDIRECT { addr: String, port: u16 },
     /// Rewrite packet content via regex substitution
     REWRITE {
         pattern: String,
@@ -232,7 +232,7 @@ impl RuleOutcome {
             // avoiding unnecessary recursion here
             inner[2]
                 .as_str()
-                .parse::<u8>()
+                .parse::<u16>()
                 .or(Err(AstParseError::ParseError(
                     "bad port to REDIRECT".to_string(),
                 )))
