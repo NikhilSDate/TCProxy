@@ -3,6 +3,7 @@ mod create;
 mod request;
 mod update;
 mod delete;
+mod set_program;
 
 use clap::Parser;
 use derive_more::Display;
@@ -18,6 +19,7 @@ pub enum Command {
     Request(request::Request),
     Update(update::Update),
     Delete(delete::Delete),
+    SetProgram(set_program::SetProgram)
 }
 
 pub trait Run {
@@ -33,6 +35,7 @@ impl Run for Command {
             Command::Request(request) => request.run(app_state).await,
             Command::Update(update) => update.run(app_state).await,
             Command::Delete(delete) => delete.run(app_state).await,
+            Command::SetProgram(set_program) => set_program.run(app_state).await
         }
     }
 }
