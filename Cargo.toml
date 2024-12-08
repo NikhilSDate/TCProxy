@@ -5,5 +5,6 @@ resolver = "2"
 members = [
     "redirector",
     "rulelib",
-    "playground"
-, "client", "shared"]
+    "client",
+    "shared"
+]

@@ -50,19 +50,12 @@ async fn main() -> anyhow::Result<()> {
     // Fake IP checker program (pre-compiled)
     // If IP != localhost DROP else REDIRECT to DEST_IP:PORT
     let insns = vec![
-        SEQ(0, 0, PACKET_SOURCE_IP),
-        ITE(0, 2, 3),
-        REDIRECT(1, 2),
-        DROP
+        REDIRECT(0x80000000 | 2, 0x80000000 | 3),
     ];
 
-    let mut data = HashMap::new();
-    data.insert(0, Object::IP(Ipv4Addr::new(127, 0, 0, 1)));
-    data.insert(1, Object::IP(args.dest_ip));
-    data.insert(2, Object::Port(args.dest_port));
     let program = Program {
         instructions: insns,
-        data,
+        data: Default::default(),
     };
 
     let app_state = AppState{

@@ -97,15 +97,15 @@ impl VM {
                 }
                 Instruction::REDIRECT(address_label, port_label) => {
                     return Ok(Action::REDIRECT(
-                        program.data[&address_label].clone(),
-                        program.data[&port_label].clone(),
+                        self.get_object(address_label, program, packet).unwrap(),
+                        self.get_object(address_label, program, packet).unwrap(),
                     ));
                 }
                 Instruction::REJECT => return Ok(Action::REJECT),
                 Instruction::REWRITE(find_label, replace_label) => {
                     return Ok(Action::REWRITE(
-                        program.data[&find_label].clone(),
-                        program.data[&replace_label].clone(),
+                        self.get_object(find_label, program, packet).unwrap(),
+                        self.get_object(replace_label, program, packet).unwrap(),
                     ));
                 }
             }
