@@ -83,9 +83,43 @@ impl RuleSvc for Server {
             Err(e) => Err(Error::Anyhow(format!("Failed to insert rulefile: {}", e))),
         }
     }
+
+    async fn list(self, _: context::Context) -> Result<Vec<RuleFile>> {
+        let conn = match self.app_state.conn.lock() {
+            Ok(conn) => conn,
+            Err(e) => {
+                return Err(Error::Anyhow(format!(
+                    "Failed to obtain lock on app state: {}",
+                    e
+                )))
+            }
+        };
+
+        let mut stmt = conn.prepare("SELECT id, name, content FROM rulefiles");
+        if stmt.is_err() {
+            return Err(Error::Anyhow(format!(
+                "Failed to prepare statement: {}",
+                stmt.err().unwrap()
+            )));
+        }
+        let mut stmt = stmt.unwrap();
+
+        let mut rulefiles = Vec::new();
+        let mut rows = stmt.query(params![]).unwrap();
+        while let Some(row) = rows.next().unwrap() {
+            rulefiles.push(RuleFile {
+                id: row.get(0).unwrap(),
+                name: row.get(1).unwrap(),
+                content: row.get(2).unwrap(),
+            });
+        }
+        Ok(rulefiles)
+    }
+
     async fn request(self, context: context::Context, id: i64) -> Result<RuleFile> {
         self.request_helper(context, id).await
     }
+
     async fn update(self, _: context::Context, id: i64, content: String) -> Result<()> {
         let conn = match self.app_state.conn.lock() {
             Ok(conn) => conn,
@@ -111,6 +145,7 @@ impl RuleSvc for Server {
         }
         Ok(())
     }
+
     async fn delete(self, _: context::Context, id: i64) -> Result<()> {
         let conn = match self.app_state.conn.lock() {
             Ok(conn) => conn,

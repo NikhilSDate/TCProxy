@@ -4,6 +4,7 @@ mod request;
 mod update;
 mod delete;
 mod set_program;
+mod list;
 
 use clap::Parser;
 use derive_more::Display;
@@ -16,6 +17,7 @@ use strum_macros::{EnumIter, EnumString};
 pub enum Command {
     Exit(exit::Exit),
     Create(create::Create),
+    List(list::List),
     Request(request::Request),
     Update(update::Update),
     Delete(delete::Delete),
@@ -32,6 +34,7 @@ impl Run for Command {
         match self {
             Command::Exit(exit) => exit.run(app_state).await,
             Command::Create(create) => create.run(app_state).await,
+            Command::List(list) => list.run(app_state).await,
             Command::Request(request) => request.run(app_state).await,
             Command::Update(update) => update.run(app_state).await,
             Command::Delete(delete) => delete.run(app_state).await,

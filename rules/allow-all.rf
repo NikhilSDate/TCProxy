@@ -1,0 +1,4 @@
+(set-mode OPAQUE)
+
+(def-rule allow-all
+    (REDIRECT "127.0.0.1" 80))
