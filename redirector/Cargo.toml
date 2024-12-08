@@ -23,3 +23,11 @@ serde = { version = "1.0.210", features = ["derive"] }
 
 # Services interface
 shared = { path = "../shared" }
+tokio-stream = {version = "0.1.16", features = ["net"]}
+tokio-util = {version = "0.7.12", features = ["io"]}
+
+# Rules & Compilation
+rulelib = { path = "../rulelib" }
+pest = "2.6"
+pest_derive = "2.6"
+lazy_static = "1.5"

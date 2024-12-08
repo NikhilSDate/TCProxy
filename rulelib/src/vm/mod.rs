@@ -1,20 +1,20 @@
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub(crate) type Reg = usize;
 pub(crate) type ObjKey = u32; // use positive numbers for HashMap keys, use negative numbers for packet fields
 pub(crate) type Label = usize;
 
-const PACKET_MASK: u32 = 0x80000000; // to access packet fields, set MSB of ObjKey to 1
-pub(crate) const PACKET_SOURCE_IP: ObjKey = 0 | PACKET_MASK;
-pub(crate) const PACKET_SOURCE_PORT: ObjKey = 1 | PACKET_MASK;
-const PACKET_DEST_IP: ObjKey = 2 | PACKET_MASK;
-const PACKET_DEST_PORT: ObjKey = 3 | PACKET_MASK;
-pub(crate) const PACKET_CONTENT: ObjKey = 4 | PACKET_MASK;
+pub const PACKET_MASK: u32 = 0x80000000; // to access packet fields, set MSB of ObjKey to 1
+pub const PACKET_SOURCE_IP: ObjKey = 0 | PACKET_MASK;
+pub const PACKET_SOURCE_PORT: ObjKey = 1 | PACKET_MASK;
+pub const PACKET_DEST_IP: ObjKey = 2 | PACKET_MASK;
+pub const PACKET_DEST_PORT: ObjKey = 3 | PACKET_MASK;
+pub const PACKET_CONTENT: ObjKey = 4 | PACKET_MASK;
 
-#[derive(Debug)]
-pub(crate) enum Instruction {
+#[derive(Debug, Clone)]
+pub enum Instruction {
     SEQ(Reg, ObjKey, ObjKey), // set-if-equal
     AND(Reg, Reg, Reg),       // bitwise AND
     OR(Reg, Reg, Reg),        // bitwise OR
@@ -26,19 +26,19 @@ pub(crate) enum Instruction {
     REWRITE(ObjKey, ObjKey), // rewrite find_string replace_string
 }
 
-#[derive(Default, Debug)]
-pub(crate) struct Program {
-    pub(crate) instructions: Vec<Instruction>,
-    pub(crate) data: HashMap<ObjKey, Object>,
+#[derive(Debug, Clone, Default)]
+pub struct Program {
+    pub instructions: Vec<Instruction>,
+    pub data: HashMap<ObjKey, Object>,
 }
 
 const NUM_REGS: usize = 16;
-struct VM {
+pub struct VM {
     registers: [u32; NUM_REGS],
 }
 
 #[derive(PartialEq, Debug)]
-enum Action {
+pub enum Action {
     DROP,
     REDIRECT(Object, Object),
     REWRITE(Object, Object),
@@ -46,16 +46,16 @@ enum Action {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub(crate) enum Object {
+pub enum Object {
     IP(Ipv4Addr),
     Port(u16),
-    Data(Rc<Vec<u8>>), // TODO: make this a lifetime
+    Data(Arc<Vec<u8>>), // TODO: make this a lifetime
 }
 
-struct Packet {
-    source: (Ipv4Addr, u16),
-    dest: (Ipv4Addr, u16),
-    content: Rc<Vec<u8>>,
+pub struct Packet {
+    pub source: (Ipv4Addr, u16),
+    pub dest: (Ipv4Addr, u16),
+    pub content: Arc<Vec<u8>>,
 }
 
 impl VM {
@@ -150,9 +150,9 @@ mod tests {
     use super::*;
 
     use crate::ast::AstNode;
-    use crate::RuleParser;
+    use crate::parser::RuleParser;
     use pest::Parser;
-    use crate::Rule;
+    use crate::parser::Rule;
 
     #[test]
     pub fn test_vm_seq() {
@@ -168,7 +168,7 @@ mod tests {
         let packet = Packet {
             source: (Ipv4Addr::new(0, 0, 0, 0), 16),
             dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
-            content: Rc::new(vec![]),
+            content: Arc::new(vec![]),
         };
         vm.run_program(&program, &packet);
         assert_eq!(vm.registers[0], 1);
@@ -178,10 +178,10 @@ mod tests {
     #[test]
     pub fn test_ip_equals() {
         let insns = vec![
-            SEQ(0, 0, PacketSourceIP),
+            SEQ(0, 0, PACKET_SOURCE_IP),
             ITE(0, 2, 3),
             DROP,
-            REDIRECT(1, 2)
+            REDIRECT(1, 2),
         ];
         let mut data = HashMap::new();
         data.insert(0, Object::IP(Ipv4Addr::new(123, 123, 123, 123)));
@@ -195,7 +195,7 @@ mod tests {
         let packet = Packet {
             source: (Ipv4Addr::new(123, 123, 123, 123), 16),
             dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
-            content: Rc::new(vec![]),
+            content: Arc::new(vec![]),
         };
         let result = vm.run_program(&program, &packet);
         assert!(result.is_ok());
@@ -206,8 +206,8 @@ mod tests {
     pub fn test_vm_data() {
         let insns: Vec<Instruction> = vec![Instruction::SEQ(5, 0, 1)];
         let mut data = HashMap::new();
-        data.insert(0, Object::Data(Rc::new(vec![1, 2, 3])));
-        data.insert(1, Object::Data(Rc::new(vec![1, 2, 3])));
+        data.insert(0, Object::Data(Arc::new(vec![1, 2, 3])));
+        data.insert(1, Object::Data(Arc::new(vec![1, 2, 3])));
         let program = Program {
             instructions: insns,
             data: data,
@@ -216,7 +216,7 @@ mod tests {
         let packet = Packet {
             source: (Ipv4Addr::new(0, 0, 0, 0), 16),
             dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
-            content: Rc::new(vec![]),
+            content: Arc::new(vec![]),
         };
         vm.run_program(&program, &packet);
         assert_eq!(vm.registers[5], 1);
@@ -226,8 +226,8 @@ mod tests {
     #[test]
     pub fn test_logical() {
         let mut data = HashMap::new();
-        data.insert(0, Object::Data(Rc::new(vec![1, 4, 8])));
-        data.insert(1, Object::Data(Rc::new(vec![1, 4, 8])));
+        data.insert(0, Object::Data(Arc::new(vec![1, 4, 8])));
+        data.insert(1, Object::Data(Arc::new(vec![1, 4, 8])));
         data.insert(2, Object::Port(443));
         let insns = vec![
             Instruction::SEQ(0, 0, 1),
@@ -246,7 +246,7 @@ mod tests {
         let packet = Packet {
             source: (Ipv4Addr::new(0, 0, 0, 0), 16),
             dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
-            content: Rc::new(vec![]),
+            content: Arc::new(vec![]),
         };
         let mut vm = VM::new();
         let result = vm.run_program(&program, &packet);
@@ -272,13 +272,13 @@ mod tests {
         let mut vm = VM::new();
         let mut data = HashMap::new();
 
-        let find = Object::Data(Rc::new(vec![0x41]));
-        let replace = Object::Data(Rc::new(vec![0x61]));
+        let find = Object::Data(Arc::new(vec![0x41]));
+        let replace = Object::Data(Arc::new(vec![0x61]));
 
         let redirect_ip = Object::IP(Ipv4Addr::new(123, 123, 123, 123));
         let redirect_port = Object::Port(442);
 
-        data.insert(0, Object::Data(Rc::new(vec![0x41, 0x41, 0x41])));
+        data.insert(0, Object::Data(Arc::new(vec![0x41, 0x41, 0x41])));
         data.insert(1, find.clone());
         data.insert(2, replace.clone());
         data.insert(3, redirect_ip.clone());
@@ -287,11 +287,11 @@ mod tests {
         let packet1 = Packet {
             source: (Ipv4Addr::new(0, 0, 0, 0), 16),
             dest: (Ipv4Addr::new(0, 0, 0, 0), 16),
-            content: Rc::new(vec![0x41, 0x41, 0x41]),
+            content: Arc::new(vec![0x41, 0x41, 0x41]),
         };
 
         let packet2 = Packet {
-            content: Rc::new(vec![0x42, 0x42, 0x42]),
+            content: Arc::new(vec![0x42, 0x42, 0x42]),
             ..packet1
         };
         let insns = vec![
@@ -321,7 +321,11 @@ mod tests {
         assert_eq!(action2, Action::REDIRECT(redirect_ip, redirect_port));
     }
 
-    fn test_program_helper<'a>(program: &'a str, vm: &'a mut VM, packet: &Packet) -> Result<Action, &'a str> {
+    fn test_program_helper<'a>(
+        program: &'a str,
+        vm: &'a mut VM,
+        packet: &Packet,
+    ) -> Result<Action, &'a str> {
         let parse_tree = RuleParser::parse(Rule::program, program)
             .unwrap()
             .next()
@@ -350,19 +354,20 @@ mod tests {
         let bad_packet = Packet {
             source: (bad_ip, 80),
             dest: (dest_ip, 80),
-            content: Rc::new(content.clone())
+            content: Arc::new(content.clone())
         };
         let good_packet = Packet {
             source: (good_ip, 80),
             dest: (dest_ip, 80),
-            content: Rc::new(content.clone())
+            content: Arc::new(content.clone())
         };
         let mut vm = VM::new();
         let bad_action = test_program_helper(program, &mut vm, &bad_packet).unwrap();
         let bad_action_target = Action::DROP;
         assert_eq!(bad_action, bad_action_target);
         let good_action = test_program_helper(program, &mut vm, &good_packet).unwrap();
-        let good_action_target = Action::REDIRECT(Object::IP(Ipv4Addr::new(127, 0, 0, 1)), Object::Port(80));
+        let good_action_target =
+            Action::REDIRECT(Object::IP(Ipv4Addr::new(127, 0, 0, 1)), Object::Port(80));
         assert_eq!(good_action, good_action_target);
     }
 }

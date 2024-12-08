@@ -7,4 +7,5 @@ pub trait RuleSvc {
     async fn request(id: i64) -> Result<RuleFile>;
     async fn update(id: i64, content: String) -> Result<()>;
     async fn delete(id: i64) -> Result<()>;
+    async fn set_program(id: i64) -> Result<()>;
 }
