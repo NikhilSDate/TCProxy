@@ -15,7 +15,18 @@ pub struct List {}
 impl Run for List {
     async fn run(&self, app_state: &AppState) -> Result<()> {
         let rule_files = app_state.client.list(context::current()).await??;
-        println!("Got rule files {:?}", rule_files);
+        if rule_files.is_empty() {
+            println!("No rule files found");
+            return Ok(());
+        }
+
+        println!("\n    {:<5} {:<20}", "ID", "Name");
+
+        for rule_file in rule_files {
+            println!("    {:<5} {:<20}", rule_file.id, rule_file.name);
+        }
+        println!();
+
         Ok(())
     }
 }

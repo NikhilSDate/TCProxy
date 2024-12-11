@@ -59,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let app_state = AppState{
-        conn: Arc::new(Mutex::new(Connection::open_in_memory()?)),
+        conn: Arc::new(Mutex::new(Connection::open("redirector.db").unwrap())),
         program: Arc::new(Mutex::new(program))
     };
 

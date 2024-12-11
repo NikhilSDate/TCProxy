@@ -9,7 +9,7 @@ pub fn init_sql(app_state: AppState) -> anyhow::Result<()> {
 
     // Create: Set up the table
     conn.execute(
-        "CREATE TABLE rulefiles (
+        "CREATE TABLE IF NOT EXISTS rulefiles (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
             content TEXT NOT NULL

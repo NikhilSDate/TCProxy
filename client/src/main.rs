@@ -35,10 +35,10 @@ async fn main() -> anyhow::Result<()> {
             Ok(input) => input,
             Err(err) => { println!("Input error: {:?}", err); continue; },
         };
-        println!("Input: {:?}", input);
+        if input.trim().is_empty() { continue };
         let command = match command::Command::try_parse_from(format!("client {}", input).split(" ").collect::<Vec<&str>>()) {
             Ok(command) => command,
-            Err(err) => { println!("Parse error: {}", err); continue; },
+            Err(err) => { println!("{}", err); continue; },
         };
         match command.run(&mut app_state).await {
             Ok(_) => {},
