@@ -1,4 +1,5 @@
 use futures::{future, FutureExt, StreamExt, TryFutureExt};
+use core::str;
 use std::cell::RefCell;
 use std::io;
 use std::net::Ipv4Addr;
@@ -114,6 +115,12 @@ pub async fn redirect(bind_ip: Ipv4Addr, bind_port: u16, dest_ip: Ipv4Addr, dest
                                 } else {
                                     unreachable!();
                                 };
+                                unsafe {
+                                    let content = str::from_utf8_unchecked(&**content);
+                                    let find = str::from_utf8_unchecked(&**find);
+                                    let replace = str::from_utf8_unchecked(&**replace);
+                                    content.replace(find, replace);
+                                }
                                 if let Some(e) = otx.write_all(&**content).await.err() {
                                     error!("Error writing to outbound stream: {:?}", e);
                                     break;
