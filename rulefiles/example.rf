@@ -1,0 +1,8 @@
+(set-mode OPAQUE)
+
+(def-var bad-ip "192.0.1.2")
+
+(def-rule simple-rule
+    (if (exact? :packet-source-ip bad-ip)
+        DROP
+        (REDIRECT "127.0.0.1" 80)))

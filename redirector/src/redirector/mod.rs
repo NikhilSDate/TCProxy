@@ -16,6 +16,7 @@ use tokio_util::io::{ReaderStream, StreamReader};
 use tracing::{error, event, info, Level};
 use rulelib::vm::{Action, Packet, VM};
 use crate::model::AppState;
+use rulelib::vm::Object;
 
 fn convert_to_packet(local_addr: SocketAddr, peer_addr: SocketAddr, content: Bytes) -> Packet {
     Packet {
@@ -102,7 +103,17 @@ pub async fn redirect(bind_ip: Ipv4Addr, bind_port: u16, dest_ip: Ipv4Addr, dest
                             }
                             Action::DROP => { continue; }
                             Action::REJECT => { continue; }
-                            Action::REWRITE(destination, port) => {
+                            Action::REWRITE(find, replace) => {
+                                let find = if let Object::Data(find) = find {
+                                    find
+                                } else {
+                                    unreachable!();
+                                };
+                                let replace = if let Object::Data(replace) = replace {
+                                    replace
+                                } else {
+                                    unreachable!();
+                                };
                                 if let Some(e) = otx.write_all(&**content).await.err() {
                                     error!("Error writing to outbound stream: {:?}", e);
                                     break;
