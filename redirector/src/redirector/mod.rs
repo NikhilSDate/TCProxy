@@ -1,29 +1,35 @@
-use futures::{future, FutureExt, StreamExt, TryFutureExt};
+use crate::model::AppState;
+use core::net::SocketAddr;
 use core::str;
+use futures::{future, FutureExt, StreamExt, TryFutureExt};
+use rulelib::vm::Object;
+use rulelib::vm::{Action, Packet, VM};
 use std::cell::RefCell;
 use std::io;
 use std::net::Ipv4Addr;
 use std::process::Output;
+use std::str::FromStr;
+use std::sync::Arc;
 use std::task::{ready, Poll};
 use tokio::io::{copy_bidirectional, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::macros::support::poll_fn;
 use tokio::net::{TcpListener, TcpStream};
-use core::net::SocketAddr;
-use std::sync::Arc;
-use std::str::FromStr;
 use tokio_stream::wrappers::TcpListenerStream;
 use tokio_util::bytes::Bytes;
 use tokio_util::io::{ReaderStream, StreamReader};
 use tracing::{error, event, info, Level};
-use rulelib::vm::{Action, Packet, VM};
-use crate::model::AppState;
-use rulelib::vm::Object;
 
 fn convert_to_packet(local_addr: SocketAddr, peer_addr: SocketAddr, content: Bytes) -> Packet {
     Packet {
         // Disgusting type nonsense
-        source: (Ipv4Addr::from_str(&local_addr.ip().to_string()).unwrap(), local_addr.port()),
-        dest: (Ipv4Addr::from_str(&peer_addr.ip().to_string()).unwrap(), peer_addr.port()),
+        source: (
+            Ipv4Addr::from_str(&local_addr.ip().to_string()).unwrap(),
+            local_addr.port(),
+        ),
+        dest: (
+            Ipv4Addr::from_str(&peer_addr.ip().to_string()).unwrap(),
+            peer_addr.port(),
+        ),
         content: Arc::new(Vec::from(content)),
     }
 }
@@ -40,7 +46,13 @@ fn filter(packet: Packet, app_state: &AppState) -> Action {
     result.unwrap()
 }
 
-pub async fn redirect(bind_ip: Ipv4Addr, bind_port: u16, dest_ip: Ipv4Addr, dest_port: u16, app_state: AppState) {
+pub async fn redirect(
+    bind_ip: Ipv4Addr,
+    bind_port: u16,
+    dest_ip: Ipv4Addr,
+    dest_port: u16,
+    app_state: AppState,
+) {
     let listener = TcpListener::bind(format!("{}:{}", bind_ip, bind_port))
         .await
         .unwrap(); // We should panic here as a failure this early is unrecoverable
@@ -78,7 +90,6 @@ pub async fn redirect(bind_ip: Ipv4Addr, bind_port: u16, dest_ip: Ipv4Addr, dest
                 }
             };
 
-        
         let (orx, mut otx) = outbound.into_split();
         let (irx, mut itx) = inbound.into_split();
 
@@ -102,8 +113,12 @@ pub async fn redirect(bind_ip: Ipv4Addr, bind_port: u16, dest_ip: Ipv4Addr, dest
                                     break;
                                 }
                             }
-                            Action::DROP => { continue; }
-                            Action::REJECT => { continue; }
+                            Action::DROP => {
+                                continue;
+                            }
+                            Action::REJECT => {
+                                continue;
+                            }
                             Action::REWRITE(find, replace) => {
                                 let find = if let Object::Data(find) = find {
                                     find
@@ -119,11 +134,12 @@ pub async fn redirect(bind_ip: Ipv4Addr, bind_port: u16, dest_ip: Ipv4Addr, dest
                                     let content = str::from_utf8_unchecked(&**content);
                                     let find = str::from_utf8_unchecked(&**find);
                                     let replace = str::from_utf8_unchecked(&**replace);
-                                    content.replace(find, replace);
-                                }
-                                if let Some(e) = otx.write_all(&**content).await.err() {
-                                    error!("Error writing to outbound stream: {:?}", e);
-                                    break;
+                                    let res = content.replace(find, replace);
+
+                                    if let Some(e) = otx.write_all((&res).as_bytes()).await.err() {
+                                        error!("Error writing to outbound stream: {:?}", e);
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -139,7 +155,7 @@ pub async fn redirect(bind_ip: Ipv4Addr, bind_port: u16, dest_ip: Ipv4Addr, dest
             while let Some(result) = outbound_reader_stream.next().await {
                 match result {
                     Ok(bytes) => {
-                        itx.write_all(&bytes).await;  
+                        itx.write_all(&bytes).await;
                     }
                     Err(e) => {
                         break;
@@ -147,6 +163,5 @@ pub async fn redirect(bind_ip: Ipv4Addr, bind_port: u16, dest_ip: Ipv4Addr, dest
                 }
             }
         });
-
     }
 }
