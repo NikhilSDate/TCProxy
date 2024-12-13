@@ -98,7 +98,7 @@ impl VM {
                 Instruction::REDIRECT(address_label, port_label) => {
                     return Ok(Action::REDIRECT(
                         self.get_object(address_label, program, packet).unwrap(),
-                        self.get_object(address_label, program, packet).unwrap(),
+                        self.get_object(port_label, program, packet).unwrap(),
                     ));
                 }
                 Instruction::REJECT => return Ok(Action::REJECT),
@@ -150,9 +150,9 @@ mod tests {
     use super::*;
 
     use crate::ast::AstNode;
+    use crate::parser::Rule;
     use crate::parser::RuleParser;
     use pest::Parser;
-    use crate::parser::Rule;
 
     #[test]
     pub fn test_vm_seq() {
@@ -354,12 +354,12 @@ mod tests {
         let bad_packet = Packet {
             source: (bad_ip, 80),
             dest: (dest_ip, 80),
-            content: Arc::new(content.clone())
+            content: Arc::new(content.clone()),
         };
         let good_packet = Packet {
             source: (good_ip, 80),
             dest: (dest_ip, 80),
-            content: Arc::new(content.clone())
+            content: Arc::new(content.clone()),
         };
         let mut vm = VM::new();
         let bad_action = test_program_helper(program, &mut vm, &bad_packet).unwrap();
