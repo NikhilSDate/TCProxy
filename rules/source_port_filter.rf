@@ -1,0 +1,8 @@
+(set-mode OPAQUE)
+
+(def-var good-port "31337")
+
+(def-rule allow-localhost
+    (if (exact? :packet-source-port good-port)
+        (REDIRECT "127.0.0.1" 80)
+        REJECT))
