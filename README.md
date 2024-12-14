@@ -8,14 +8,15 @@ TCProxy is a performant reverse proxy written in Rust designed to work primarily
 It is designed to be used with internet-exposed TCP applications that cannot be simply placed behind existing HTTP
 redirection solutions like Apache & Nginx.
 
-TCProxy includes a custom domain-specific language used to filter inbound packets. It an operate in two modes: OPAQUE and TRANSPARENT.
-OPAQUE mode: filtering cannot be done based on the content of the inbound packet, only on its metadata (such as source and destination).
-Ideal for when the underlying traffic is already encrypted.
-TRANSPARENT mode: filtering can be done based on the content of the packet, and the packet content can be modified by the proxy in transit.
-This is ideal for when you can decrypt the underlying traffic, and if you need to do something like URL rewriting.
+TCProxy includes a command-line interface for administration and a custom domain-specific language used to filter inbound packets. It an operate in two modes: OPAQUE and TRANSPARENT.
+
+OPAQUE mode: filtering cannot be done based on the content of the inbound packet, only on its metadata (such as source and destination). Ideal for when the underlying traffic is already encrypted.
+
+TRANSPARENT mode: filtering can be done based on the content of the packet, and the packet content can be modified by the proxy in transit. This is ideal for when you can decrypt the underlying traffic, and if you need to do something like URL rewriting.
 
 ## Technical Architecture
 
+![Technical Architecture Diagram](technical_architecture.png)
 
 ## Example workflow
 ### Setting up TCProxy
