@@ -18,7 +18,7 @@ TRANSPARENT mode: filtering can be done based on the content of the packet, and 
 
 ![Technical Architecture Diagram](technical_architecture.png)
 
-## Example workflow
+## Installation and Usage Instructions
 ### Setting up TCProxy
 For each of the core components (client and redirector), enter the directory and compile with `cargo build --release`. 
 This will build a release version of the binary in the `target/release` directory.
