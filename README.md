@@ -1,6 +1,6 @@
 # TCProxy (CS 222 Semester Project)
-## Team Crab Lang Gang
-### Ronan Boyarski, Nikhil Date, Ethan Zhang, Somrishi Bannerjee
+
+Team Crab Lang Gang: Ronan Boyarski, Nikhil Date, Ethan Zhang, Somrishi Bannerjee
 
 ## Introduction
 ### What is TCProxy?
@@ -49,6 +49,6 @@ The rules are saved to disk on a sqlite database, so they will persist across re
 
 ## Developers
 - Ronan Boyarski: Initial idea, project design and architecture. Set up the SQLite database, RPC API, TARPC interface, initial filtering logic, and client.
-- Nikhil Date: Rule filtering & critical performance improvements, DSL implementation and improvements, RPC API
+- Nikhil Date: Rule filtering & critical performance improvements, DSL implementation and improvements, VM design and implementation, RPC API
 - Ethan Zhang: Implemented most of the rule language, including parsing, codegen, the underlying VM implementation, and compilation
 - Somrishi Bannerjee: Helped set up some of the redirector RPC API, SQLite database, and the client
