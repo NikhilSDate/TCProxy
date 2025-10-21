@@ -1,4 +1,4 @@
-# TCProxy (CS 222 Semester Project)
+# TCProxy
 
 Team Crab Lang Gang: Ronan Boyarski, Nikhil Date, Ethan Zhang, Somrishi Bannerjee
 
